@@ -228,7 +228,8 @@ LGPL v3
 ## 👨‍🔬 Autor
 
 - João Gerd Zell de Mattos (INPE / CPTEC) 
-- Cleicione Moura de Oliveira ( UFAL / PPGESPA ) 
+- Cleicione Moura de Oliveira ( UFAC / PPGESPA )
+- Rafael Auguto Satrapa ( UFAC / PPGESPA )
 
 ---
 
