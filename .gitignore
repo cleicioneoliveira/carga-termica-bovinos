@@ -1,1 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
 
+# Env
+.env
+.venv/
+env/
+
+# Data pesada
+data/
+outputs/
+*.parquet
+*.csv
+
+# Figures
+*.png
+*.jpg
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
