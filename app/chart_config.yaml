@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# Chart configuration
+# ------------------------------------------------------------
+title: "Cattle Functional Comfort Analysis"
+
+t_min: 0
+t_max: 40
+y_min: 0.0
+y_max: 0.030
+pressure: 101325
+
+# ------------------------------------------------------------
+# Classical isolines
+# ------------------------------------------------------------
+isolines:
+  relative_humidity:
+    enabled: True
+    color: "blue"
+    labels: True
+  enthalpy:
+    enabled: false
+    color: "red"
+    labels: True
+# ------------------------------------------------------------
+# Domain index fields (theoretical)
+# ------------------------------------------------------------
+#index_fields:
+#   - index: ITU
+#     cmap: inferno
+#     vmin: 60
+#     vmax: 90
+#     alpha: 0.5
+#     parameters:
+#        animal: dairy_cow
+
+# ------------------------------------------------------------
+# Observational datasets
+# ------------------------------------------------------------
+#observations:
+#  - file: /media/extra/wrk/DADOS_CLEO/outros_dados/panting_zero.parquet
+#    format: parquet
+#
+#    data_indexes:
+#      - index: ICF
+#        scatter: true
+#        scalar_field: false
+#        bins: [40, 40]
+#        cmap: viridis
+#        alpha: 0.6
+#        colorbar: true
+
+
