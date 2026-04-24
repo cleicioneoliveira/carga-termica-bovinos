@@ -1,46 +1,37 @@
-# 🐄 Carga Térmica em Bovinos  
+# 🐄 Carga Térmica em Bovinos
+
 ### Análise empírica de conforto térmico em espaço psicrométrico
 
-![Zona de conforto térmico](app/fig_comfort_polygon.png)
+Este projeto implementa um pipeline científico para estimar zonas empíricas de conforto térmico em bovinos leiteiros a partir de dados observacionais, carga térmica acumulada e resposta comportamental/fisiológica.
+
+A abordagem evita tratar conforto térmico como uma condição binária fixa. Em vez disso, identifica regiões de maior suporte empírico no espaço psicrométrico, usando temperatura do ar, umidade, THI acumulado, períodos contínuos de conforto e densidade estatística.
 
 ---
 
-## 📌 O que é este projeto
+## Ideia central
 
-Este projeto implementa um pipeline científico para estimar **zonas reais de conforto térmico em bovinos leiteiros**, utilizando dados observacionais e análise estatística no espaço psicrométrico (Temperatura × Umidade absoluta).
+O conforto térmico emerge como uma distribuição de probabilidade no espaço ambiental.
 
-Ao invés de usar limites fixos (como THI), a abordagem aqui é:
+O modelo identifica três regiões:
 
-→ baseada no comportamento dos animais  
-→ orientada por dados  
-→ estatisticamente consistente  
-
----
-
-## 🧠 Ideia central
-
-O conforto térmico não é binário.
-
-Ele emerge como uma **distribuição de probabilidade** no espaço ambiental.
-
-Por isso, o modelo identifica três regiões:
-
-- 🔴 **Core** → conforto ótimo (maior densidade)
-- 🟠 **Transição** → conforto aceitável
-- 🟡 **Limite** → zona de tolerância
+- **Core**: conforto ótimo, associado à maior densidade de observações.
+- **Transition**: zona intermediária de conforto aceitável.
+- **Limit**: zona de tolerância, com menor suporte estatístico.
 
 ---
 
-## 🔬 Pipeline
+## Pipeline científico
 
-O fluxo do modelo é:
-```
-
+```text
 raw dataset
 ↓
-padronização
+padronização e limpeza
 ↓
-cálculo de carga térmica (THI acumulado)
+cálculo de THI
+↓
+cálculo de excesso térmico
+↓
+análise da janela temporal de carga térmica
 ↓
 definição de conforto
 ↓
@@ -48,195 +39,153 @@ extração de períodos contínuos
 ↓
 transformação psicrométrica (T, W)
 ↓
-campo de densidade (2D histogram)
-↓
-filtragem estatística
+campo de densidade 2D
 ↓
 segmentação por percentis
 ↓
-extração geométrica (alpha-shape / convex hull)
+extração geométrica (alpha-shape ou convex hull)
 ↓
-suavização
+suavização visual
 ↓
-plot final
-
+figura final
 ```
 
 ---
 
-## 📊 Exemplo de saída
-
-O pipeline gera gráficos como:
-
-- Campo de densidade de conforto
-- Curvas psicrométricas
-- Polígonos de zona térmica
-
-Arquivo exemplo:
-
-```
-
-app/fig_comfort_polygon.png
-
-````
-
----
-
-## ⚙️ Instalação
-
-### 1. Clonar repositório
+## Instalação
 
 ```bash
-git clone https://github.com/seu-usuario/carga-termica-bovinos.git
+git clone https://github.com/cleicioneoliveira/carga-termica-bovinos.git
 cd carga-termica-bovinos
-````
-
-### 2. Criar ambiente
-
-```bash
 python -m venv .venv
 source .venv/bin/activate
-```
-
-### 3. Instalar dependências
-
-```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-## 🚀 Execução
+## Execução
 
-### Modo simples
+O entrypoint oficial é:
 
 ```bash
-python app/run_pipeline.py
+python -m app.run_pipeline --config app/config.yaml
 ```
 
-### Modo CLI (recomendado)
+Também é possível usar o wrapper de compatibilidade:
 
 ```bash
-python app/run.py --config app/config.yaml
+python -m app.run --config app/config.yaml
 ```
 
-Opções:
+Para rodar com profiling:
 
 ```bash
---dataset PATH        # sobrescreve dataset
---no-cluster          # desativa clusterização
---no-smooth           # desativa suavização
+python -m app.run_pipeline --config app/config.yaml --profile
 ```
 
 ---
 
-## ⚙️ Configuração
+## Configuração
 
-O comportamento do pipeline é totalmente controlado por:
+A configuração oficial do pipeline fica em:
 
-```
+```text
 app/config.yaml
 ```
 
-ou pelo schema tipado:
-
-
+Esse arquivo é a fonte única de verdade para parâmetros ajustáveis. O módulo `app/config.py` apenas carrega, valida e fornece compatibilidade para código antigo.
 
 Principais blocos:
 
-* density → resolução e filtragem
-* clustering → DBSCAN
-* geometry → alpha / convex
-* smoothing → suavização visual
-* zones → percentis de conforto
+- `dataset_path`: caminho do dataset unificado.
+- `thermal_mode`: modo `manual` ou `auto`.
+- `thi_threshold`: limiar usado para excesso térmico.
+- `thermal_windows`: janelas testadas no modo automático.
+- `thermal_criterion`: critério de escolha da melhor janela.
+- `density`: resolução e filtragem da densidade psicrométrica.
+- `geometry`: método geométrico (`alpha` ou `convex`).
+- `smoothing`: suavização visual dos polígonos.
+- `zones`: percentis usados nas zonas core, transition e limit.
+
+Exemplos de sobrescrita pela linha de comando:
+
+```bash
+python -m app.run_pipeline --config app/config.yaml --thermal-mode manual --thermal-window 15
+```
+
+```bash
+python -m app.run_pipeline --config app/config.yaml --dataset /path/to/dataset.parquet --no-smooth
+```
 
 ---
 
-## 🔬 Interpretação científica
+## Saídas
 
-⚠️ IMPORTANTE:
+As saídas são salvas por padrão em:
 
-* A densidade representa **dados observados**
-* Os polígonos representam **modelo derivado**
+```text
+outputs_conforto/
+```
+
+Esse diretório é tratado como saída gerada e não deve ser versionado.
+
+Exemplos de produtos:
+
+- `resultados_janelas.csv`
+- `best_window.json`
+- `dados_conforto_psicrometrico.csv`
+- `fig_comfort_polygon.png`
+- arquivos de profiling quando `--profile` é usado
+
+---
+
+## Interpretação científica
+
+A densidade representa dados observados. Os polígonos representam uma interpretação geométrica derivada desses dados.
 
 Portanto:
 
+```text
+densidade ≠ modelo biológico absoluto
+polígono ≠ verdade fisiológica universal
 ```
-densidade ≠ modelo
-polígono ≠ verdade biológica absoluta
-```
+
+A zona estimada deve ser interpretada como uma região empírica, dependente do conjunto de dados, do critério de conforto adotado e dos parâmetros de análise temporal.
 
 ---
 
-## 📈 Metodologia-chave
+## Estrutura principal
 
-### ✔️ Transformação psicrométrica
-
-Implementada em :
-
-* Remove não-linearidade da umidade relativa
-* Usa razão de mistura (W)
-
----
-
-### ✔️ Segmentação por percentis
-
-Implementada em :
-
-* Core → maior densidade
-* Transition → intermediário
-* Limit → borda
-
----
-
-### ✔️ Geometria
-
-Implementada em :
-
-* Convex Hull → baseline
-* Alpha Shape → forma realista
-
----
-
-### ✔️ Suavização
-
-Implementada em :
-
-⚠️ Apenas visual — não usar para análise quantitativa.
-
----
-
-## 📂 Estrutura
-
-```bash
+```text
 app/
-├── pipeline/        # lógica científica
-├── plot/            # visualização
-├── config.yaml      # parâmetros
-├── run.py           # CLI
-└── run_pipeline.py  # execução direta
+├── config.yaml                 # configuração oficial do pipeline
+├── config.py                   # carregador/validador da configuração
+├── run_pipeline.py             # entrypoint principal
+├── run.py                      # wrapper de compatibilidade
+├── pipeline/
+│   ├── density.py
+│   ├── geometry.py
+│   ├── smoothing.py
+│   ├── zones.py
+│   └── thermal_comfort/        # lógica de carga térmica e conforto
+├── plot/
+│   └── plot_psychro.py
+├── io/
+├── time/
+└── util/
 ```
 
 ---
 
-## 📄 Licença
+## Licença
 
 LGPL v3
 
 ---
 
-## 👨‍🔬 Autor
+## Autores
 
-- João Gerd Zell de Mattos (INPE / CPTEC) 
-- Cleicione Moura de Oliveira ( UFAC / PPGESPA )
-- Rafael Auguto Satrapa ( UFAC / PPGESPA )
-
----
-
-## 🚧 Próximos passos
-
-* Integração com psychChart como plugin
-* Cálculo de índices (ITU, HLI, UTCI)
-* API (FastAPI)
-* Dashboard interativo
-
+- João Gerd Zell de Mattos (INPE / CPTEC)
+- Cleicione Moura de Oliveira (UFAC / PPGESPA)
+- Rafael Augusto Satrapa (UFAC / PPGESPA)
