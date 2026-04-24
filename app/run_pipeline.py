@@ -29,7 +29,7 @@ from .util.profiling import run_with_profile
 # CONFIG PADRÃO
 # ==========================================================
 DEFAULT_THI_THRESHOLD = 72
-DEFAULT_WINDOWS = list(range(1, 25, 1))   # 3, 6, ..., 24
+DEFAULT_WINDOWS = list(range(1, 25, 1))   # 1, 2, ..., 24
 DEFAULT_WINDOW = 15
 DEFAULT_MIN_DURATION = 3
 DEFAULT_THERMAL_MODE = 'manual'
@@ -83,7 +83,7 @@ def build_comfort_dataset(cfg: dict) -> pd.DataFrame:
 
     df = load_and_prepare_dataset(
         dataset_path=dataset_path,
-        thi_threshold=72,
+        thi_threshold=thi_threshold,
     )
 
     if df.empty:
@@ -292,6 +292,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.profile:
-        run_with_profile(run_pipeline, profile_file="profile.prof")
+        run_with_profile(
+            run_pipeline,
+            profile_file=args.profile_file,
+            sort_by=args.profile_sort,
+            lines=args.profile_lines,
+        )
     else:
         run_pipeline()
