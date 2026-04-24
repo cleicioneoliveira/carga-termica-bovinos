@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,17 @@ DEFAULT_MIN_DURATION = 3
 DEFAULT_THERMAL_MODE = "manual"
 DEFAULT_THERMAL_CRITERION = "mean_corr"
 DEFAULT_OUTPUT_DIR = "outputs_conforto"
+
+logger = logging.getLogger(__name__)
+
+
+def configure_logging(level: str = "INFO") -> None:
+    """Configure a compact console logger for command-line execution."""
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="[%(levelname)s] %(message)s",
+        force=True,
+    )
 
 
 def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
@@ -91,46 +103,46 @@ def run_pipeline(cfg: dict[str, Any] | None = None) -> None:
     """Execute the full thermal-comfort and psychrometric pipeline."""
     cfg = cfg or CONFIG
 
-    print("[INFO] Building dataset...")
+    logger.info("Building dataset...")
     df = build_comfort_dataset(cfg)
-    print(f"[INFO] Comfort records: {len(df):,}")
+    logger.info("Comfort records: %s", f"{len(df):,}")
 
-    print("[INFO] Building density...")
+    logger.info("Building density...")
     T_edges, W_edges, values = build_density(
         df,
         pressure=101325,
         cfg=cfg,
     )
 
-    print("[INFO] Extracting points...")
+    logger.info("Extracting points...")
     points = extract_points(T_edges, W_edges, values)
-    print(f"[INFO] Points extracted: {len(points):,}")
+    logger.info("Points extracted: %s", f"{len(points):,}")
 
-    print("[INFO] Filtering density...")
+    logger.info("Filtering density...")
     points = filter_density(points, values, cfg)
-    print(f"[INFO] Points after filtering: {len(points):,}")
+    logger.info("Points after filtering: %s", f"{len(points):,}")
 
     if len(points) < 10:
         raise RuntimeError("Too few points after filtering. Check density parameters.")
 
-    print("[INFO] Building zones...")
+    logger.info("Building zones...")
     zones = build_zones(points, values, cfg)
     for name, pts in zones.items():
-        print(f"[INFO] Zone '{name}': {len(pts):,} points")
+        logger.info("Zone '%s': %s points", name, f"{len(pts):,}")
 
-    print("[INFO] Building polygons...")
+    logger.info("Building polygons...")
     polygons = build_zone_polygons(zones, cfg)
     if not polygons:
         raise RuntimeError("No polygons were generated.")
 
     if cfg.get("smoothing", {}).get("enabled", True):
-        print("[INFO] Smoothing polygons...")
+        logger.info("Smoothing polygons...")
         polygons = smooth_polygons(polygons, cfg)
 
-    print("[INFO] Plotting...")
+    logger.info("Plotting...")
     plot_psychro(T_edges, W_edges, values, polygons, ZONE_COLORS, cfg)
 
-    print("[INFO] Pipeline completed successfully.")
+    logger.info("Pipeline completed successfully.")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -164,9 +176,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override thermal_window when using manual mode.",
     )
     parser.add_argument(
+        "--show-plots",
+        action="store_true",
+        help="Display Matplotlib windows after saving figures.",
+    )
+    parser.add_argument(
+        "--verbose-chart",
+        action="store_true",
+        help="Do not suppress stdout emitted by the chart renderer.",
+    )
+    parser.add_argument(
         "--no-smooth",
         action="store_true",
         help="Disable polygon smoothing for this run.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default=None,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Override log_level from the YAML configuration.",
     )
     parser.add_argument(
         "--profile",
@@ -212,6 +240,15 @@ def apply_cli_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> dict[s
     if args.no_smooth:
         updated["smoothing"]["enabled"] = False
 
+    if args.show_plots:
+        updated["show_plots"] = True
+
+    if args.verbose_chart:
+        updated["suppress_chart_stdout"] = False
+
+    if args.log_level:
+        updated["log_level"] = args.log_level
+
     return updated
 
 
@@ -222,6 +259,7 @@ def main() -> int:
 
     cfg = load_config(args.config) if args.config else load_config()
     cfg = apply_cli_overrides(cfg, args)
+    configure_logging(cfg.get("log_level", "INFO"))
 
     if args.profile:
         run_with_profile(
