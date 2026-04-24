@@ -1,537 +1,139 @@
-
 from __future__ import annotations
 
-from typing import Dict, Any
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
 
-# ==========================================================
-# GLOBAL CONFIGURATION
-# ==========================================================
-#
-# This dictionary centralizes all user-adjustable parameters
-# of the empirical comfort-zone pipeline.
-#
-# The goal of keeping everything here is reproducibility:
-# by changing only these values, we can reproduce the
-# different methodological choices tested during the study,
-# without editing the internal logic of the code.
-#
-# In practice, this configuration controls five major stages:
-#
-#   1. input data source
-#   2. density field generation in psychrometric space
-#   3. density-based filtering of low-relevance regions
-#   4. cluster detection in the T-W plane
-#   5. geometric extraction of the final comfort zone
-#
-# ----------------------------------------------------------
-# SCIENTIFIC CONTEXT
-# ----------------------------------------------------------
-#
-# This pipeline was created to estimate an empirical bovine
-# thermal comfort zone in psychrometric space using:
-#
-#   - environmental variables (temperature and humidity)
-#   - accumulated heat load
-#   - physiological/behavioral filtering
-#
-# The resulting workflow is:
-#
-#   raw dataset
-#      -> comfort records
-#      -> psychrometric density field
-#      -> optional density filtering
-#      -> optional clustering
-#      -> polygon extraction
-#      -> optional smoothing
-#
-# The values below are not "universal truths".
-# They are methodological choices that worked well for the
-# current dataset and must be interpreted as tunable
-# parameters, not fixed biological constants.
-#
-CONFIG: Dict[str, Any] = {
-    # ------------------------------------------------------
-    # DATASET INPUT
-    # ------------------------------------------------------
-    #
-    # Full path to the main dataset used as input for the
-    # pipeline.
-    #
-    # This is the original merged dataset containing all
-    # hourly records, not only comfort records.
-    #
-    # The script itself will:
-    #   - standardize columns
-    #   - compute heat load
-    #   - define comfort
-    #   - extract continuous comfort periods
-    #
-    # Therefore, this path should point to the "raw final
-    # dataset", not to a previously filtered CSV.
-    #
-    "dataset_path": "/media/extra/wrk/CONFORTO/dataset/processado/monitoramento_saude_unificado.parquet",
+import yaml
 
-    # ------------------------------------------------------
-    # THERMAL COMFORT EXTRACTION
-    # ------------------------------------------------------
-    #
-    # Controls how the thermal-comfort dataset is built before
-    # the psychrometric density analysis.
-    #
-    # Available modes:
-    #
-    #   "manual":
-    #       use a predefined temporal window
-    #
-    #   "auto":
-    #       test multiple windows, choose the best one, and then
-    #       extract comfort periods using that result
-    #
-    # This section is used by thermal_comfort_pipeline.py
-    # through run_pipeline.py.
-    #
-    "thermal_mode": "auto",   # options: "manual" | "auto"
 
-    # THI threshold used to compute heat excess:
-    # heat_excess = max(0, THI - thi_threshold)
-    #
-    # For the current study, 72 is the literature-based value
-    # adopted as the critical threshold.
-    #
-    "thi_threshold": 72,
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+APP_DIR = PROJECT_ROOT / "app"
+DEFAULT_CONFIG_PATH = APP_DIR / "config.yaml"
 
-    # Minimum duration of a comfort block.
-    #
-    # IMPORTANT:
-    # in the current implementation this means number of
-    # consecutive records, not true elapsed hours.
-    #
-    # If the dataset is hourly and regular, 3 means 3 hours.
-    #
-    "min_duration": 3,
 
-    # Directory where the intermediate outputs of the thermal
-    # step will be written, such as:
-    #
-    #   - resultados_janelas.csv
-    #   - temporal_scale_clean.png/pdf
-    #   - dados_conforto_psicrometrico.csv
-    #
-    "thermal_output_dir": "outputs_conforto",
-
-    # Used only when thermal_mode == "manual"
-    #
-    # Fixed temporal window (in records/hours) used to compute
-    # accumulated heat load.
-    #
-    "thermal_window": 15,
-
-    # Used only when thermal_mode == "auto"
-    #
-    # Candidate windows tested during the multi-window analysis.
-    #
-    "thermal_windows": list(range(1, 25, 1)),
-
-    # Criterion used to choose the best window in auto mode.
-    #
-    # Options:
-    #   - "mean_corr"
-    #   - "median_corr"
-    #
-    "thermal_criterion": "mean_corr",
-
-    # ------------------------------------------------------
-    # PSYCHROMETRIC CHART CONFIGURATION
-    # ------------------------------------------------------
-    #
-    # Path to the psychrometric chart configuration file.
-    #
-    # This file controls the visual and thermodynamic settings
-    # used by PsychChart, such as:
-    #
-    #   - axis limits
-    #   - grid appearance
-    #   - psychrometric curves
-    #   - chart styling
-    #
-    # If this field is not provided, the pipeline falls back
-    # to the default configuration file located at the project root:
-    #
-    #   chart_config.yaml
-    #
-    # The path may be:
-    #
-    #   - absolute
-    #   - relative to the project root
-    #
-    
-    "chart_config_path": "chart_config.yaml",
-
-    # ------------------------------------------------------
-    # FIGURE OUTPUT
-    # ------------------------------------------------------
-    #
-    # Path or filename for the final figure exported by the
-    # script.
-    #
-    # This file stores the psychrometric chart plus the final
-    # comfort polygon.
-    #
-    # Good practice:
-    #   - use a descriptive name
-    #   - save different versions if comparing methods
-    #     (e.g. alpha, convex, clustered, filtered)
-    #
-    "output_fig": "fig_comfort_polygon.png",
-
-    # ------------------------------------------------------
-    # DENSITY FIELD PARAMETERS
-    # ------------------------------------------------------
-    #
-    # The comfort points are converted into a 2D histogram in
-    # psychrometric space using:
-    #
-    #   x-axis -> dry-bulb temperature (T)
-    #   y-axis -> humidity ratio (W)
-    #
-    # Each cell of this histogram represents the relative
-    # density (probability mass) of comfort observations.
-    #
-    # The parameters below control how detailed and how noisy
-    # this density field will be.
-    #
-    "density": {
-        # Number of bins used in the 2D histogram.
-        #
-        # Interpretation:
-        #   - larger value -> finer spatial resolution
-        #   - smaller value -> smoother, coarser density map
-        #
-        # Practical consequences:
-        #   - too high: density becomes fragmented, many empty bins,
-        #     noisy boundaries, unstable polygons
-        #   - too low: oversmoothing, loss of structure, excessive
-        #     merging of distinct regions
-        #
-        # For the current dataset, 40 worked as a reasonable
-        # compromise between detail and stability.
-        #
-        # Typical values to test:
-        #   30 -> smoother
-        #   40 -> balanced
-        #   50 -> more detailed
-        #
-        "bins": 40,
-
-        # Minimum density retained in the histogram.
-        #
-        # After normalization, extremely small density values often
-        # correspond to isolated or weakly supported cells. Those
-        # cells are usually noise for geometric extraction.
-        #
-        # All density values below this threshold are set to NaN.
-        #
-        # Interpretation:
-        #   - larger value -> more aggressive cleaning
-        #   - smaller value -> preserve more low-density cells
-        #
-        # Practical consequences:
-        #   - too high: may erase meaningful peripheral structure
-        #   - too low: may preserve noisy bins and distort zone shape
-        #
-        # This is a visual + geometric denoising parameter.
-        #
-        "min_density": 0.001,
-
-        # ------------------------------------------------------
-        # DENSITY-BASED FILTERING
-        # ------------------------------------------------------
-        #
-        # Even after removing very small values with "min_density",
-        # the retained density field may still include peripheral
-        # areas with weak support.
-        #
-        # The optional density filter keeps only bins whose density
-        # is above a chosen percentile of the remaining density
-        # distribution.
-        #
-        # This is useful when we want the zone to represent the
-        # "core" or "most representative" comfort region rather
-        # than the full low-density envelope.
-        #
-    
-        # Enable or disable percentile-based density filtering.
-        #
-        # True:
-        #   only keep cells above the chosen percentile
-        #
-        # False:
-        #   keep all non-NaN cells after density_min cleaning
-        #
-        # Use True when:
-        #   - the polygon is too large
-        #   - low-density tails are inflating the region
-        #   - you want a more conservative comfort zone
-        #
-        # Use False when:
-        #   - you want the full observed comfort support
-        #   - you are exploring the raw shape of the density field
-        #
-        "use_filter": False,
-    
-        # Percentile used in density filtering.
-        #
-        # Example:
-        #   65 means: keep only cells whose density is at or above
-        #   the 65th percentile of the retained density values.
-        #
-        # Interpretation:
-        #   - higher percentile -> smaller, more core-centered zone
-        #   - lower percentile -> larger, more inclusive zone
-        #
-        # Typical interpretation:
-        #   50 -> broad comfort support
-        #   65 -> balanced comfort envelope
-        #   80 -> comfort core
-        #
-        # If you revisit this study in the future, this is one of
-        # the first parameters to test when the zone seems too
-        # broad or too fragmented.
-        #
-        "percentile": 25,
-    },
-
-    # ------------------------------------------------------
-    # CLUSTERING
-    # ------------------------------------------------------
-    #
-    # The density field may contain more than one concentration
-    # of points in psychrometric space. Some of these may be:
-    #
-    #   - the main comfort region
-    #   - satellite regions
-    #   - artifacts caused by sparse bins
-    #
-    # Clustering is used to isolate the main connected region
-    # before extracting the polygon.
-    #
-    # We used DBSCAN because:
-    #   - it does not require specifying the number of clusters
-    #   - it can identify noise points
-    #   - it works well for irregular, non-spherical groups
-    #
-    "clustering": {
-        # Enable or disable clustering.
-        #
-        # True:
-        #   detect clusters and keep only the dominant one
-        #
-        # False:
-        #   use all filtered points directly for polygon extraction
-        #
-        # Use True when:
-        #   - the density map is fragmented
-        #   - multiple disconnected regions appear
-        #   - you want the final zone to represent the main comfort
-        #     cluster only
-        #
-        # Use False when:
-        #   - the density field is already compact and connected
-        #   - you want the polygon to include all filtered regions
-        #
-        "enabled": True,
-    
-        # DBSCAN neighborhood radius in standardized space.
-        #
-        # IMPORTANT:
-        # before clustering, T and W are standardized so that
-        # differences in measurement scale do not distort distance.
-        #
-        # Interpretation:
-        #   - smaller eps -> stricter clustering, more fragmentation
-        #   - larger eps -> looser clustering, more merging
-        #
-        # Typical behavior:
-        #   0.3 -> very restrictive
-        #   0.5 -> balanced
-        #   0.7 -> more permissive
-        #
-        # If the algorithm finds only tiny clusters, eps may be too
-        # small. If it merges clearly distinct regions, eps may be
-        # too large.
-        #
-        "eps": 0.5,
-    
-        # Minimum number of neighboring points required for a point
-        # to be considered a DBSCAN core point.
-        #
-        # Interpretation:
-        #   - smaller value -> easier to form clusters
-        #   - larger value -> only denser structures survive
-        #
-        # Practical consequences:
-        #   - too small: noise may become a false cluster
-        #   - too large: true structure may be discarded
-        #
-        # This parameter should be interpreted together with eps.
-        #
-        "min_samples": 10,
-    },
-
-    # ------------------------------------------------------
-    # GEOMETRIC EXTRACTION METHOD
-    # ------------------------------------------------------
-    #
-    # After filtering and clustering, the remaining points are
-    # converted into a polygon that represents the empirical
-    # comfort zone.
-    #
-    # Two methods are available:
-    #
-    #   "convex" :
-    #       Convex Hull
-    #       -> simplest enclosing polygon
-    #       -> tends to overestimate area
-    #       -> good for baseline comparison
-    #
-    #   "alpha" :
-    #       Alpha Shape
-    #       -> non-convex boundary
-    #       -> follows data shape more closely
-    #       -> better for realistic comfort envelopes
-    #
-    "geometry": {
-        # Scientific recommendation:
-        #   use "convex" as a reproducibility baseline
-        #   use "alpha" as the preferred biological/geometric method
-        #
-        "method": "alpha",   # options: "alpha" | "convex"
-    
-        # ------------------------------------------------------
-        # ALPHA SHAPE PARAMETER
-        # ------------------------------------------------------
-        #
-        # This parameter controls the tightness of the alpha shape.
-        #
-        # Interpretation:
-        #   - smaller alpha -> tighter, more detailed boundary
-        #   - larger alpha -> smoother, more open boundary
-        #
-        # Practical behavior depends on point distribution, so it is
-        # not absolute. It must always be interpreted empirically.
-        #
-        # In general:
-        #   0.8 -> more restrictive, follows local details
-        #   1.2 -> balanced
-        #   2.0 -> more relaxed, broader envelope
-        #
-        # If the polygon becomes too jagged, alpha may be too small.
-        # If it becomes too inflated and loses shape, alpha may be
-        # too large.
-        #
-        # Only used when method == "alpha".
-        #
-        "alpha": 1.2,
-    },
-
-    # ------------------------------------------------------
-    # POLYGON SMOOTHING
-    # ------------------------------------------------------
-    #
-    # Even when the extracted polygon is conceptually correct,
-    # the boundary may look jagged due to:
-    #
-    #   - discrete histogram bins
-    #   - small local irregularities
-    #   - sparse edge points
-    #
-    # Optional smoothing improves visual interpretability and
-    # produces a more publication-ready contour.
-    #
-    # IMPORTANT:
-    # smoothing changes the visual geometry of the polygon.
-    # It should be treated as a presentation refinement, not as
-    # a replacement for the underlying data structure.
-    #
-    "smoothing": {
-        # Enable or disable smoothing of the final polygon.
-        #
-        # True:
-        #   apply smoothing after polygon extraction
-        #
-        # False:
-        #   keep the raw polygon as extracted
-        #
-        # Recommendation:
-        #   keep True for figures
-        #   test False when validating the raw geometry
-        #
-        "enabled": True,
-    
-        # Controls the intensity of smoothing.
-        #
-        # Larger sigma -> smoother contour
-        # Smaller sigma -> contour closer to raw geometry
-        #
-        # Typical values:
-        #   1 -> mild smoothing
-        #   2 -> balanced smoothing
-        #   3 -> strong smoothing
-        #
-        # If the boundary loses important shape features, sigma is
-        # too large. If the contour still looks too noisy, sigma is
-        # too small.
-        #
-        "sigma": 2,
-    },
-
-    # ------------------------------------------------------
-    # MULTI-ZONE DEFINITION
-    # ------------------------------------------------------
-    #
-    # Instead of defining a single comfort region, the pipeline
-    # defines multiple zones based on density percentiles.
-    #
-    # This approach reflects the continuous nature of thermal
-    # comfort, avoiding binary classification.
-    #
-    # Zones:
-    #
-    #   core:
-    #       highest density region
-    #       represents optimal comfort conditions
-    #
-    #   transition:
-    #       intermediate density region
-    #       represents acceptable conditions
-    #
-    #   limit:
-    #       low-density boundary
-    #       represents tolerance limits
-    #
-    "zones": {
-
-        # Core region percentile
-        "core_percentile": 85,
-
-        # Transition region percentile
-        "transition_percentile": 60,
-
-        # Limit region percentile
-        "limit_percentile": 30,
-    },
-}
-# ==========================================================
-# ZONE COLORS
-# ==========================================================
-#
-# Colors used in visualization of the different zones.
-#
-# These values affect only plotting, not the computation.
-#
-ZONE_COLORS = {
+ZONE_COLORS: dict[str, str] = {
     "core": "red",
     "transition": "orange",
     "limit": "yellow",
 }
 
+
+def resolve_project_path(path: str | Path, *, base_dir: Path = PROJECT_ROOT) -> Path:
+    """Resolve absolute and project-relative paths consistently.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to resolve. Absolute paths are returned unchanged after expansion.
+        Relative paths are resolved from ``base_dir``.
+    base_dir : Path, optional
+        Directory used to resolve relative paths. Defaults to the repository root.
+
+    Returns
+    -------
+    Path
+        Resolved path.
+    """
+    resolved = Path(path).expanduser()
+
+    if not resolved.is_absolute():
+        resolved = base_dir / resolved
+
+    return resolved.resolve()
+
+
+def load_config(path: str | Path | None = None) -> dict[str, Any]:
+    """Load the pipeline configuration from a YAML file.
+
+    ``app/config.yaml`` is the official source of truth. This module exists only
+    to centralize loading, validation and compatibility for older imports.
+    """
+    config_path = resolve_project_path(path or DEFAULT_CONFIG_PATH)
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+    with config_path.open("r", encoding="utf-8") as handle:
+        cfg = yaml.safe_load(handle) or {}
+
+    if not isinstance(cfg, dict):
+        raise TypeError(f"Configuration root must be a mapping: {config_path}")
+
+    cfg = _with_defaults(cfg)
+    validate_config(cfg)
+    return cfg
+
+
+def _with_defaults(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Return a validated configuration dictionary with safe defaults."""
+    result = deepcopy(cfg)
+
+    result.setdefault("thermal_mode", "auto")
+    result.setdefault("thi_threshold", 72)
+    result.setdefault("min_duration", 3)
+    result.setdefault("thermal_output_dir", "outputs_conforto")
+    result.setdefault("thermal_window", 15)
+    result.setdefault("thermal_windows", list(range(1, 25)))
+    result.setdefault("thermal_criterion", "mean_corr")
+    result.setdefault("chart_config_path", "app/chart_config.yaml")
+    result.setdefault("output_fig", "fig_comfort_polygon.png")
+
+    result.setdefault("density", {})
+    result["density"].setdefault("bins", 40)
+    result["density"].setdefault("min_density", 0.001)
+    result["density"].setdefault("percentile", 65)
+    result["density"].setdefault("use_filter", False)
+
+    result.setdefault("clustering", {})
+    result["clustering"].setdefault("enabled", False)
+    result["clustering"].setdefault("eps", 0.5)
+    result["clustering"].setdefault("min_samples", 10)
+
+    result.setdefault("geometry", {})
+    result["geometry"].setdefault("method", "alpha")
+    result["geometry"].setdefault("alpha", 1.2)
+
+    result.setdefault("smoothing", {})
+    result["smoothing"].setdefault("enabled", True)
+    result["smoothing"].setdefault("sigma", 2)
+
+    result.setdefault("zones", {})
+    result["zones"].setdefault("core_percentile", 85)
+    result["zones"].setdefault("transition_percentile", 60)
+    result["zones"].setdefault("limit_percentile", 30)
+
+    return result
+
+
+def validate_config(cfg: dict[str, Any]) -> None:
+    """Validate the minimum configuration required by the pipeline."""
+    required_keys = ["dataset_path", "density", "geometry", "smoothing", "zones"]
+    missing = [key for key in required_keys if key not in cfg]
+    if missing:
+        raise ValueError(f"Missing required configuration keys: {', '.join(missing)}")
+
+    thermal_mode = cfg.get("thermal_mode")
+    if thermal_mode not in {"manual", "auto"}:
+        raise ValueError("thermal_mode must be either 'manual' or 'auto'")
+
+    criterion = cfg.get("thermal_criterion")
+    if criterion not in {"mean_corr", "median_corr"}:
+        raise ValueError("thermal_criterion must be 'mean_corr' or 'median_corr'")
+
+    if int(cfg["density"]["bins"]) < 10:
+        raise ValueError("density.bins must be >= 10")
+
+    if cfg["geometry"]["method"] not in {"alpha", "convex"}:
+        raise ValueError("geometry.method must be 'alpha' or 'convex'")
+
+    zones = cfg["zones"]
+    if not zones["core_percentile"] >= zones["transition_percentile"] >= zones["limit_percentile"]:
+        raise ValueError(
+            "Zone percentiles must satisfy: core_percentile >= "
+            "transition_percentile >= limit_percentile"
+        )
+
+
+# Backward-compatible import used by older scripts.
+CONFIG = load_config()
