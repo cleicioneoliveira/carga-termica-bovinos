@@ -1,83 +1,50 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
+from typing import Any
+
 import pandas as pd
 
-from .config import CONFIG, ZONE_COLORS
-
-from .pipeline.density import (
-    build_density,
-    extract_points,
-    filter_density,
-)
-
-from .pipeline.zones import build_zones
+from .config import CONFIG, ZONE_COLORS, load_config
+from .pipeline.density import build_density, extract_points, filter_density
 from .pipeline.geometry import build_zone_polygons
 from .pipeline.smoothing import smooth_polygons
 from .pipeline.thermal_comfort import (
     load_and_prepare_dataset,
-    run_manual_mode,
     run_auto_mode,
+    run_manual_mode,
 )
-
+from .pipeline.zones import build_zones
 from .plot.plot_psychro import plot_psychro
-
-
 from .util.profiling import run_with_profile
 
-# ==========================================================
-# CONFIG PADRÃO
-# ==========================================================
+
 DEFAULT_THI_THRESHOLD = 72
-DEFAULT_WINDOWS = list(range(1, 25, 1))   # 1, 2, ..., 24
+DEFAULT_WINDOWS = list(range(1, 25))
 DEFAULT_WINDOW = 15
 DEFAULT_MIN_DURATION = 3
-DEFAULT_THERMAL_MODE = 'manual'
-DEFAULT_THERMAL_CRITERIA = 'mean_corr'
-DEFAULT_OUTPUT_DIR = 'outputs_conforto'
+DEFAULT_THERMAL_MODE = "manual"
+DEFAULT_THERMAL_CRITERION = "mean_corr"
+DEFAULT_OUTPUT_DIR = "outputs_conforto"
 
-# ==========================================================
-# DATASET PREPARATION
-# ==========================================================
-#
-# This function transforms the raw dataset into a dataset
-# containing only valid comfort records.
-#
-# ----------------------------------------------------------
-# SCIENTIFIC CONTEXT
-# ----------------------------------------------------------
-#
-# The original dataset contains:
-#
-#   - environmental variables
-#   - behavioral indicators (rumination, activity, etc.)
-#   - temporal information
-#
-# This step performs:
-#
-#   1. column standardization
-#   2. cleaning and type conversion
-#   3. THI computation
-#   4. heat load computation
-#   5. comfort classification
-#   6. extraction of continuous comfort periods
-#
-# The output is a filtered dataset representing only
-# conditions associated with thermal comfort.
-#
-# IMPORTANT:
-#
-# This is one of the most critical steps in the pipeline.
-# Any bias here propagates to all subsequent stages.
-#
-def build_comfort_dataset(cfg: dict) -> pd.DataFrame:
-    """Build comfort dataset from raw data using thermal_comfort_pipeline."""
 
+def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
+    """Build the comfort-period dataset used by the psychrometric stage.
+
+    Parameters
+    ----------
+    cfg : dict
+        Pipeline configuration loaded from YAML.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame containing only valid comfort-period records.
+    """
     dataset_path = cfg["dataset_path"]
-
     thi_threshold = cfg.get("thi_threshold", DEFAULT_THI_THRESHOLD)
     min_duration = cfg.get("min_duration", DEFAULT_MIN_DURATION)
-
     thermal_mode = cfg.get("thermal_mode", DEFAULT_THERMAL_MODE)
     output_dir = cfg.get("thermal_output_dir", DEFAULT_OUTPUT_DIR)
 
@@ -91,7 +58,6 @@ def build_comfort_dataset(cfg: dict) -> pd.DataFrame:
 
     if thermal_mode == "manual":
         window = cfg.get("thermal_window", DEFAULT_WINDOW)
-
         _, df_periods = run_manual_mode(
             df=df,
             window=window,
@@ -101,8 +67,7 @@ def build_comfort_dataset(cfg: dict) -> pd.DataFrame:
 
     elif thermal_mode == "auto":
         windows = cfg.get("thermal_windows", DEFAULT_WINDOWS)
-        criterion = cfg.get("thermal_criterion", DEFAULT_THERMAL_CRITERIA)
-
+        criterion = cfg.get("thermal_criterion", DEFAULT_THERMAL_CRITERION)
         _, _, _, df_periods = run_auto_mode(
             df=df,
             windows=windows,
@@ -113,8 +78,7 @@ def build_comfort_dataset(cfg: dict) -> pd.DataFrame:
 
     else:
         raise ValueError(
-            f"Invalid thermal_mode: {thermal_mode!r}. "
-            "Use 'manual' or 'auto'."
+            f"Invalid thermal_mode: {thermal_mode!r}. Use 'manual' or 'auto'."
         )
 
     if df_periods.empty:
@@ -123,180 +87,154 @@ def build_comfort_dataset(cfg: dict) -> pd.DataFrame:
     return df_periods
 
 
-# ==========================================================
-# MAIN PIPELINE EXECUTION
-# ==========================================================
-#
-# This function orchestrates the full workflow:
-#
-#   dataset → density → filtering → zones → geometry → plot
-#
-# ----------------------------------------------------------
-# PIPELINE FLOW
-# ----------------------------------------------------------
-#
-#   1. Build comfort dataset
-#   2. Convert to psychrometric space (T, W)
-#   3. Build density field
-#   4. Extract valid points
-#   5. Apply density filtering (optional)
-#   6. Segment into zones (core/transition/limit)
-#   7. Build polygons
-#   8. Apply smoothing (optional)
-#   9. Generate final plot
-#
-# ----------------------------------------------------------
-# DESIGN PRINCIPLES
-# ----------------------------------------------------------
-#
-#   - fully reproducible (driven by CONFIG)
-#   - modular (each stage isolated)
-#   - interpretable (clear separation of steps)
-#
-def run_pipeline() -> None:
-    """Execute full pipeline."""
-
-    cfg = CONFIG
+def run_pipeline(cfg: dict[str, Any] | None = None) -> None:
+    """Execute the full thermal-comfort and psychrometric pipeline."""
+    cfg = cfg or CONFIG
 
     print("[INFO] Building dataset...")
     df = build_comfort_dataset(cfg)
-
     print(f"[INFO] Comfort records: {len(df):,}")
 
-    # ------------------------------------------------------
-    # DENSITY FIELD
-    # ------------------------------------------------------
-    #
     print("[INFO] Building density...")
     T_edges, W_edges, values = build_density(
         df,
         pressure=101325,
-        cfg=cfg
+        cfg=cfg,
     )
 
-    # ------------------------------------------------------
-    # POINT EXTRACTION
-    # ------------------------------------------------------
-    #
     print("[INFO] Extracting points...")
     points = extract_points(T_edges, W_edges, values)
-
     print(f"[INFO] Points extracted: {len(points):,}")
 
-    # ------------------------------------------------------
-    # DENSITY FILTERING
-    # ------------------------------------------------------
-    #
     print("[INFO] Filtering density...")
     points = filter_density(points, values, cfg)
-
     print(f"[INFO] Points after filtering: {len(points):,}")
 
     if len(points) < 10:
         raise RuntimeError("Too few points after filtering. Check density parameters.")
 
-    # ------------------------------------------------------
-    # ZONE SEGMENTATION
-    # ------------------------------------------------------
-    #
     print("[INFO] Building zones...")
     zones = build_zones(points, values, cfg)
-
     for name, pts in zones.items():
         print(f"[INFO] Zone '{name}': {len(pts):,} points")
 
-    # ------------------------------------------------------
-    # GEOMETRY
-    # ------------------------------------------------------
-    #
     print("[INFO] Building polygons...")
     polygons = build_zone_polygons(zones, cfg)
-
     if not polygons:
         raise RuntimeError("No polygons were generated.")
 
-    # ------------------------------------------------------
-    # SMOOTHING
-    # ------------------------------------------------------
-    #
-    print("[INFO] Smoothing polygons...")
-    polygons = smooth_polygons(polygons, cfg)
+    if cfg.get("smoothing", {}).get("enabled", True):
+        print("[INFO] Smoothing polygons...")
+        polygons = smooth_polygons(polygons, cfg)
 
-    # ------------------------------------------------------
-    # PLOTTING
-    # ------------------------------------------------------
-    #
     print("[INFO] Plotting...")
-    plot_psychro(
-        T_edges,
-        W_edges,
-        values,
-        polygons,
-        ZONE_COLORS,
-        cfg
-    )
+    plot_psychro(T_edges, W_edges, values, polygons, ZONE_COLORS, cfg)
 
     print("[INFO] Pipeline completed successfully.")
 
 
-# ==========================================================
-# ENTRY POINT
-# ==========================================================
-#
-
-# ==========================================================
-# CLI
-# ==========================================================
 def build_parser() -> argparse.ArgumentParser:
-    
+    """Build the command-line interface parser."""
     parser = argparse.ArgumentParser(
-        description="Análise de carga térmica e extração de períodos de conforto."
+        description="Analyze bovine thermal load and extract comfort periods."
     )
 
-    #--------------------------------------------
-    # Profilling flags
-    #--------------------------------------------
-
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to YAML configuration file. Defaults to app/config.yaml.",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Override dataset_path from the YAML configuration.",
+    )
+    parser.add_argument(
+        "--thermal-mode",
+        choices=["manual", "auto"],
+        default=None,
+        help="Override thermal_mode from the YAML configuration.",
+    )
+    parser.add_argument(
+        "--thermal-window",
+        type=int,
+        default=None,
+        help="Override thermal_window when using manual mode.",
+    )
+    parser.add_argument(
+        "--no-smooth",
+        action="store_true",
+        help="Disable polygon smoothing for this run.",
+    )
     parser.add_argument(
         "--profile",
         action="store_true",
-        help="Ativa profiling com cProfile."
+        help="Enable cProfile profiling.",
     )
-    
     parser.add_argument(
         "--profile-file",
         default="outputs_conforto/profile.prof",
-        help="Arquivo de saída do profiling."
+        help="Profiling output file.",
     )
-    
     parser.add_argument(
         "--profile-sort",
         default="cumulative",
         choices=["cumulative", "time", "calls"],
-        help="Critério de ordenação do profiling."
+        help="Profiling sort criterion.",
     )
-    
     parser.add_argument(
         "--profile-lines",
         type=int,
         default=30,
-        help="Quantidade de linhas mostradas no resumo do profiling."
+        help="Number of profiling summary lines to display.",
     )
 
     return parser
 
 
-if __name__ == "__main__":
-    
+def apply_cli_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    """Apply command-line overrides without mutating the loaded config."""
+    updated = dict(cfg)
+    updated["density"] = dict(cfg.get("density", {}))
+    updated["smoothing"] = dict(cfg.get("smoothing", {}))
+
+    if args.dataset:
+        updated["dataset_path"] = args.dataset
+
+    if args.thermal_mode:
+        updated["thermal_mode"] = args.thermal_mode
+
+    if args.thermal_window is not None:
+        updated["thermal_window"] = args.thermal_window
+
+    if args.no_smooth:
+        updated["smoothing"]["enabled"] = False
+
+    return updated
+
+
+def main() -> int:
+    """CLI entrypoint."""
     parser = build_parser()
     args = parser.parse_args()
 
+    cfg = load_config(args.config) if args.config else load_config()
+    cfg = apply_cli_overrides(cfg, args)
+
     if args.profile:
         run_with_profile(
-            run_pipeline,
+            lambda: run_pipeline(cfg),
             profile_file=args.profile_file,
             sort_by=args.profile_sort,
             lines=args.profile_lines,
         )
     else:
-        run_pipeline()
+        run_pipeline(cfg)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
