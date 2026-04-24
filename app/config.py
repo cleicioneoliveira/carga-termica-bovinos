@@ -69,7 +69,103 @@ CONFIG: Dict[str, Any] = {
     # Therefore, this path should point to the "raw final
     # dataset", not to a previously filtered CSV.
     #
-    "dataset_path": "/media/extra/wrk/DADOS_CLEO/outputs/dataset_final_1293.parquet",
+    "dataset_path": "/media/extra/wrk/CONFORTO/dataset/processado/monitoramento_saude_unificado.parquet",
+
+    # ------------------------------------------------------
+    # THERMAL COMFORT EXTRACTION
+    # ------------------------------------------------------
+    #
+    # Controls how the thermal-comfort dataset is built before
+    # the psychrometric density analysis.
+    #
+    # Available modes:
+    #
+    #   "manual":
+    #       use a predefined temporal window
+    #
+    #   "auto":
+    #       test multiple windows, choose the best one, and then
+    #       extract comfort periods using that result
+    #
+    # This section is used by thermal_comfort_pipeline.py
+    # through run_pipeline.py.
+    #
+    "thermal_mode": "auto",   # options: "manual" | "auto"
+
+    # THI threshold used to compute heat excess:
+    # heat_excess = max(0, THI - thi_threshold)
+    #
+    # For the current study, 72 is the literature-based value
+    # adopted as the critical threshold.
+    #
+    "thi_threshold": 72,
+
+    # Minimum duration of a comfort block.
+    #
+    # IMPORTANT:
+    # in the current implementation this means number of
+    # consecutive records, not true elapsed hours.
+    #
+    # If the dataset is hourly and regular, 3 means 3 hours.
+    #
+    "min_duration": 3,
+
+    # Directory where the intermediate outputs of the thermal
+    # step will be written, such as:
+    #
+    #   - resultados_janelas.csv
+    #   - temporal_scale_clean.png/pdf
+    #   - dados_conforto_psicrometrico.csv
+    #
+    "thermal_output_dir": "outputs_conforto",
+
+    # Used only when thermal_mode == "manual"
+    #
+    # Fixed temporal window (in records/hours) used to compute
+    # accumulated heat load.
+    #
+    "thermal_window": 15,
+
+    # Used only when thermal_mode == "auto"
+    #
+    # Candidate windows tested during the multi-window analysis.
+    #
+    "thermal_windows": list(range(1, 25, 1)),
+
+    # Criterion used to choose the best window in auto mode.
+    #
+    # Options:
+    #   - "mean_corr"
+    #   - "median_corr"
+    #
+    "thermal_criterion": "mean_corr",
+
+    # ------------------------------------------------------
+    # PSYCHROMETRIC CHART CONFIGURATION
+    # ------------------------------------------------------
+    #
+    # Path to the psychrometric chart configuration file.
+    #
+    # This file controls the visual and thermodynamic settings
+    # used by PsychChart, such as:
+    #
+    #   - axis limits
+    #   - grid appearance
+    #   - psychrometric curves
+    #   - chart styling
+    #
+    # If this field is not provided, the pipeline falls back
+    # to the default configuration file located at the project root:
+    #
+    #   chart_config.yaml
+    #
+    # The path may be:
+    #
+    #   - absolute
+    #   - relative to the project root
+    #
+    
+    "chart_config_path": "configs/chart_config_minha_versao.yaml",
 
     # ------------------------------------------------------
     # FIGURE OUTPUT

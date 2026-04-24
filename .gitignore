@@ -24,3 +24,43 @@ outputs/
 
 # OS
 .DS_Store
+
+# >>> carga-termica-bovinos generated outputs >>>
+
+# Generated outputs
+outputs_conforto/
+app/outputs_conforto/
+app/figures_article/
+app/resultados_dissertacao/
+figures/
+
+# Profiling
+*.prof
+profile.prof
+
+# Generated scientific figures and tables
+*.png
+*.pdf
+
+# Local/generated datasets
+*.parquet
+*.csv
+*.xlsx
+
+# Python cache/environment
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.env/
+
+# Local editor/OS files
+.DS_Store
+Thumbs.db
+
+# Safety backups created by this script
+.git_safety_backup/
+
+# <<< carga-termica-bovinos generated outputs <<<

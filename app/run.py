@@ -14,8 +14,8 @@ from pipeline.geometry import build_zone_polygons
 from pipeline.smoothing import smooth_polygons
 from plot.plot_psychro import plot_psychro
 
+from pipeline.thermal_comfort import standardize_columns
 from extract_comfort_periods import (
-    standardize_columns,
     calculate_heat_load,
     define_comfort,
     extract_comfort_periods,
