@@ -61,7 +61,7 @@
 #
 # Therefore, this path should point to the "raw final
 # dataset", not to a previously filtered CSV.
-dataset_path: "/media/extra/wrk/DADOS_CLEO/outputs/dataset_final_1293.parquet"
+dataset_path: "/media/extra/wrk/CONFORTO/dataset/processado/monitoramento_saude_unificado.parquet"
 # ------------------------------------------------------
 # FIGURE OUTPUT
 # ------------------------------------------------------

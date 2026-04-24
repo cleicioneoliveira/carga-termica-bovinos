@@ -23,11 +23,19 @@ def standardize_columns(df):
     }
     return df.rename(columns=mapping)
 
+def convert_and_clean(df):
+    # Conversão e limpeza
+    df["temperatura"] = pd.to_numeric(df["temperatura"], errors="coerce")
+    df["umidade"] = pd.to_numeric(df["umidade"], errors="coerce")
+    df = df.dropna(subset=["temperatura", "umidade", "ofegacao"])
+    
+    return df.sort_values(["animal_id", "data_hora"]).reset_index(drop=True)
 
 # ==========================================================
 # THI
 # ==========================================================
 def calculate_thi(temp, rh):
+    """Calcula o Temperature-Humidity Index (THI)"""
     return (1.8 * temp + 32) - (0.55 - 0.0055 * rh) * (1.8 * temp - 26)
 
 
@@ -38,13 +46,7 @@ def calculate_heat_load(df):
 
     df = df.copy()
 
-    df["temperatura"] = pd.to_numeric(df["temperatura"], errors="coerce")
-    df["umidade"] = pd.to_numeric(df["umidade"], errors="coerce")
-
-    df = df.dropna(subset=["temperatura", "umidade"])
-
-    df = df.sort_values(["animal_id", "data_hora"])
-
+    print("[INFO] Calculando THI...")
     df["thi"] = calculate_thi(df["temperatura"], df["umidade"])
     df["heat_excess"] = np.maximum(0, df["thi"] - THI_THRESHOLD)
 

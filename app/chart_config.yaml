@@ -1,13 +1,13 @@
 # ------------------------------------------------------------
 # Chart configuration
 # ------------------------------------------------------------
-title: "Cattle Functional Comfort Analysis"
-
-t_min: 0
-t_max: 40
-y_min: 0.0
-y_max: 0.030
-pressure: 101325
+chart:
+  title: "Cattle Functional Comfort Analysis"
+  t_min: 0
+  t_max: 40
+  y_min: 0.0
+  y_max: 0.030
+  pressure: 101325
 
 # ------------------------------------------------------------
 # Classical isolines
@@ -18,9 +18,21 @@ isolines:
     color: "blue"
     labels: True
   enthalpy:
-    enabled: false
+    enabled: True
     color: "red"
     labels: True
+      
+indexes:
+  - index: ITU
+    label: ITU
+    render:
+      isolines:
+        levels: [62, 68, 72, 78, 84, 90]
+        color: black
+        linewidth: 1.2
+        style: ":"
+        label: true
+
 # ------------------------------------------------------------
 # Domain index fields (theoretical)
 # ------------------------------------------------------------
