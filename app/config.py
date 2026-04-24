@@ -165,7 +165,7 @@ CONFIG: Dict[str, Any] = {
     #   - relative to the project root
     #
     
-    "chart_config_path": "configs/chart_config_minha_versao.yaml",
+    "chart_config_path": "chart_config.yaml",
 
     # ------------------------------------------------------
     # FIGURE OUTPUT
