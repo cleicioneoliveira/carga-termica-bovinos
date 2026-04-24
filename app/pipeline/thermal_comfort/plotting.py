@@ -11,10 +11,20 @@ import seaborn as sns
 
 from .analysis import find_series_max_point, find_consensus_negative_end, find_zero_crossing
 
+
+def _finish_figure(fig, *, show_plot: bool) -> None:
+    """Display or close a Matplotlib figure after saving."""
+    if show_plot:
+        fig.show()
+    else:
+        plt.close(fig)
+
+
 def plot_window_results_academic(
     df_results: pd.DataFrame,
     output_dir: str | Path,
     x_tick_interval: int = 3,
+    show_plot: bool = False,
 ) -> None:
     """
     Gera gráfico acadêmico da correlação por janela temporal.
@@ -170,7 +180,7 @@ def plot_window_results_academic(
     plt.tight_layout()
     plt.savefig(output_path / "temporal_scale_academic.png", dpi=600, bbox_inches="tight")
     plt.savefig(output_path / "temporal_scale_academic.pdf", bbox_inches="tight")
-    plt.close(fig)
+    _finish_figure(fig, show_plot=show_plot)
 
 
 def plot_psychrometric(
@@ -182,6 +192,7 @@ def plot_psychrometric(
     bw_adjust: float = 1.2,
     scatter_sample_size: int | None = None,
     debug_timers: bool = False,
+    show_plot: bool = False,
 ) -> None:
     """
     Gera o gráfico psicrométrico com KDE, contorno e scatter.
@@ -266,7 +277,7 @@ def plot_psychrometric(
     plt.tight_layout()
     plt.savefig(output_path / "fig_psychrometric_comfort.png", dpi=300, bbox_inches="tight")
     plt.savefig(output_path / "fig_psychrometric_comfort.pdf", bbox_inches="tight")
-    plt.close(fig)
+    _finish_figure(fig, show_plot=show_plot)
 
     if debug_timers:
         t_end = time.perf_counter()

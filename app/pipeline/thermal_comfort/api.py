@@ -31,6 +31,7 @@ def run_manual_mode(
     window: int,
     min_duration: int,
     output_dir: str | Path,
+    show_plots: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     API pública para execução em modo manual.
@@ -44,7 +45,7 @@ def run_manual_mode(
     df_comfort = define_comfort(df_window, window)
     df_periods = extract_comfort_periods(df_comfort, min_duration=min_duration)
 
-    plot_psychrometric(df_periods, output_path)
+    plot_psychrometric(df_periods, output_path, show_plot=show_plots)
     save_dataframe_csv(df_periods, output_path / "dados_conforto_psicrometrico.csv")
 
     return df_window, df_periods
@@ -56,6 +57,7 @@ def run_auto_mode(
     criterion: str,
     min_duration: int,
     output_dir: str | Path,
+    show_plots: bool = False,
 ) -> tuple[int, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     API pública para execução em modo automático.
@@ -68,7 +70,7 @@ def run_auto_mode(
     df_results = run_window_analysis(df, windows)
     save_dataframe_csv(df_results, output_path / "resultados_janelas.csv")
 
-    plot_window_results_academic(df_results, output_path)
+    plot_window_results_academic(df_results, output_path, show_plot=show_plots)
 
     best_window = choose_best_window(df_results, criterion=criterion)
     print(f"[INFO] Melhor janela escolhida: {best_window}h (critério: {criterion})")
@@ -79,7 +81,7 @@ def run_auto_mode(
     df_comfort = define_comfort(df_window, best_window)
     df_periods = extract_comfort_periods(df_comfort, min_duration=min_duration)
 
-    plot_psychrometric(df_periods, output_path)
+    plot_psychrometric(df_periods, output_path, show_plot=show_plots)
     save_dataframe_csv(df_periods, output_path / "dados_conforto_psicrometrico.csv")
 
     return best_window, df_results, df_window, df_periods
