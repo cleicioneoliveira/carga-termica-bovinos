@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
+import logging
 from typing import Optional
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from scipy.stats import ttest_1samp, wilcoxon
@@ -13,14 +11,15 @@ from .metrics import add_heat_load
 from .columns import Column
 
 
+logger = logging.getLogger(__name__)
+
+
 def find_series_max_point(
     df: pd.DataFrame,
     x_col: str,
     y_col: str,
 ) -> tuple[float, float]:
-    """
-    Retorna o ponto de máximo de uma série.
-    """
+    """Return the x/y coordinates of the maximum value in a series."""
     if df.empty:
         raise ValueError("O DataFrame está vazio.")
 
@@ -36,9 +35,7 @@ def find_series_max_point(
 
 
 def find_zero_crossing(x: pd.Series, y: pd.Series) -> Optional[float]:
-    """
-    Retorna o primeiro ponto em que a série cruza y = 0 usando interpolação linear.
-    """
+    """Return the first y=0 crossing using linear interpolation."""
     x_values = x.to_numpy(dtype=float)
     y_values = y.to_numpy(dtype=float)
 
@@ -71,9 +68,7 @@ def find_consensus_negative_end(
     y1: pd.Series,
     y2: pd.Series,
 ) -> Optional[float]:
-    """
-    Retorna o fim da fase em que y1 e y2 estão simultaneamente abaixo de zero.
-    """
+    """Return the end of the phase where both series are negative."""
     x_values = x.to_numpy(dtype=float)
     y1_values = y1.to_numpy(dtype=float)
     y2_values = y2.to_numpy(dtype=float)
@@ -122,27 +117,24 @@ def find_consensus_negative_end(
 
 
 def analyze_per_animal(df: pd.DataFrame, heat_col: str) -> np.ndarray:
-    """
-    Calcula correlação entre carga térmica e ofegação por animal.
-    """
+    """Calculate heat-load/panting correlation by animal."""
     corrs: list[float] = []
 
-    for _, group in df.groupby(Column.ANIMAL_ID, observed=False):
+    for _, group in df.groupby(Column.ANIMAL_ID, observed=False, sort=False):
         group = group.dropna(subset=[heat_col, Column.OFEGACAO])
 
         if len(group) < 50:
             continue
 
         corr = group[[heat_col, Column.OFEGACAO]].corr().iloc[0, 1]
-        corrs.append(corr)
+        if not np.isnan(corr):
+            corrs.append(float(corr))
 
     return np.array(corrs, dtype=float)
 
 
 def compute_significance(corr_values: np.ndarray) -> tuple[float, float]:
-    """
-    Executa t-test e Wilcoxon contra zero.
-    """
+    """Run one-sample t-test and Wilcoxon test against zero."""
     corr_values = corr_values[~np.isnan(corr_values)]
 
     if len(corr_values) == 0:
@@ -161,38 +153,52 @@ def compute_significance(corr_values: np.ndarray) -> tuple[float, float]:
     return p_t, p_w
 
 
+def _summarize_window(window: int, corr_values: np.ndarray) -> dict[str, float | int]:
+    """Build the aggregate metrics row for one candidate window."""
+    corr_values = corr_values[~np.isnan(corr_values)]
+
+    mean_corr = np.nanmean(corr_values) if len(corr_values) > 0 else np.nan
+    median_corr = np.nanmedian(corr_values) if len(corr_values) > 0 else np.nan
+    positives = int(np.sum(corr_values > 0)) if len(corr_values) > 0 else 0
+    negatives = int(np.sum(corr_values < 0)) if len(corr_values) > 0 else 0
+    p_t, p_w = compute_significance(corr_values)
+
+    return {
+        "window_h": window,
+        "mean_corr": mean_corr,
+        "median_corr": median_corr,
+        "positives": positives,
+        "negatives": negatives,
+        "p_ttest": p_t,
+        "p_wilcoxon": p_w,
+        "n_animals": int(len(corr_values)),
+    }
+
+
 def run_window_analysis(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
+    """Evaluate candidate windows and return aggregate metrics.
+
+    The scientific result is unchanged: for each candidate window, heat load is
+    accumulated per animal and correlated with panting. The implementation now
+    validates the window list, logs progress through Python logging and keeps
+    the result-building logic isolated for easier testing.
     """
-    Avalia uma lista de janelas e retorna métricas agregadas.
-    """
+    unique_windows = sorted({int(window) for window in windows})
+    if not unique_windows:
+        raise ValueError("A lista de janelas não pode estar vazia.")
+
+    if any(window < 1 for window in unique_windows):
+        raise ValueError("Todas as janelas devem ser maiores ou iguais a 1.")
+
     results: list[dict[str, float | int]] = []
 
-    for window in windows:
-        print(f"[INFO] Testando janela: {window}h")
+    for window in unique_windows:
+        logger.info("Testing accumulation window: %sh", window)
 
         temp_df = add_heat_load(df, window)
         heat_col = f"heat_load_{window}h"
-
         corr_values = analyze_per_animal(temp_df, heat_col)
-
-        mean_corr = np.nanmean(corr_values) if len(corr_values) > 0 else np.nan
-        median_corr = np.nanmedian(corr_values) if len(corr_values) > 0 else np.nan
-        positives = int(np.sum(corr_values > 0)) if len(corr_values) > 0 else 0
-        negatives = int(np.sum(corr_values < 0)) if len(corr_values) > 0 else 0
-        p_t, p_w = compute_significance(corr_values)
-
-        results.append(
-            {
-                "window_h": window,
-                "mean_corr": mean_corr,
-                "median_corr": median_corr,
-                "positives": positives,
-                "negatives": negatives,
-                "p_ttest": p_t,
-                "p_wilcoxon": p_w,
-                "n_animals": int(len(corr_values)),
-            }
-        )
+        results.append(_summarize_window(window, corr_values))
 
     return pd.DataFrame(results)
 
@@ -201,9 +207,7 @@ def choose_best_window(
     df_results: pd.DataFrame,
     criterion: str = "mean_corr",
 ) -> int:
-    """
-    Seleciona a melhor janela com base no critério informado.
-    """
+    """Select the best window according to the requested criterion."""
     valid_criteria = {"mean_corr", "median_corr"}
     if criterion not in valid_criteria:
         raise ValueError(f"Critério inválido: {criterion}. Use um de {valid_criteria}")
@@ -214,6 +218,3 @@ def choose_best_window(
 
     best_row = temp.sort_values(by=criterion, ascending=False).iloc[0]
     return int(best_row["window_h"])
-
-
-
