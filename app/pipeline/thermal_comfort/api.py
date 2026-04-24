@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +14,9 @@ from .dataset import load_and_prepare
 from .metrics import add_heat_load
 from .outputs import ensure_output_dir, save_best_window, save_dataframe_csv
 from .plotting import plot_psychrometric, plot_window_results_academic
+
+
+logger = logging.getLogger(__name__)
 
 
 def load_and_prepare_dataset(
@@ -37,7 +41,7 @@ def run_manual_mode(
     API pública para execução em modo manual.
     Assinatura preservada para compatibilidade com o framework externo.
     """
-    print(f"[INFO] Modo manual: usando janela fixa de {window}h")
+    logger.info("Manual mode: using fixed window of %sh", window)
 
     output_path = ensure_output_dir(output_dir)
 
@@ -63,7 +67,7 @@ def run_auto_mode(
     API pública para execução em modo automático.
     Assinatura preservada para compatibilidade com o framework externo.
     """
-    print("[INFO] Modo automático: procurando melhor janela...")
+    logger.info("Automatic mode: searching for the best accumulation window.")
 
     output_path = ensure_output_dir(output_dir)
 
@@ -73,7 +77,7 @@ def run_auto_mode(
     plot_window_results_academic(df_results, output_path, show_plot=show_plots)
 
     best_window = choose_best_window(df_results, criterion=criterion)
-    print(f"[INFO] Melhor janela escolhida: {best_window}h (critério: {criterion})")
+    logger.info("Best window selected: %sh using criterion '%s'", best_window, criterion)
 
     save_best_window(output_path, best_window, criterion)
 
