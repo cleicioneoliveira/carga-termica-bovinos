@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -8,17 +9,16 @@ from .columns import Column, REQUIRED_INPUT_COLUMNS, STANDARDIZATION_MAP
 from .metrics import add_thi_and_heat_excess
 
 
+logger = logging.getLogger(__name__)
+
+
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Renomeia colunas esperadas do dataset para a nomenclatura interna padrão.
-    """
+    """Renomeia colunas esperadas do dataset para a nomenclatura interna padrão."""
     return df.rename(columns=STANDARDIZATION_MAP)
 
 
 def convert_and_clean(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Converte tipos, valida colunas obrigatórias, remove inválidos e ordena registros.
-    """
+    """Converte tipos, valida colunas obrigatórias, remove inválidos e ordena registros."""
     cleaned = df.copy()
 
     missing = [column for column in REQUIRED_INPUT_COLUMNS if column not in cleaned.columns]
@@ -38,6 +38,7 @@ def convert_and_clean(df: pd.DataFrame) -> pd.DataFrame:
         cleaned[Column.DATA_HORA], errors="coerce"
     )
 
+    before = len(cleaned)
     cleaned = cleaned.dropna(
         subset=[
             Column.ANIMAL_ID,
@@ -47,6 +48,11 @@ def convert_and_clean(df: pd.DataFrame) -> pd.DataFrame:
             Column.OFEGACAO,
         ]
     )
+    after = len(cleaned)
+
+    if before != after:
+        logger.info("Removed %s invalid rows during cleaning.", before - after)
+
     cleaned = cleaned.sort_values(
         [Column.ANIMAL_ID, Column.DATA_HORA]
     ).reset_index(drop=True)
@@ -61,16 +67,16 @@ def load_dataset(dataset_path: str | Path) -> pd.DataFrame:
 
 def load_and_prepare(dataset_path: str | Path, thi_threshold: float) -> pd.DataFrame:
     """Carrega, padroniza, limpa e calcula métricas térmicas básicas."""
-    print("[INFO] Carregando dataset...")
+    logger.info("Loading dataset: %s", dataset_path)
     df = load_dataset(dataset_path)
 
-    print("[INFO] Padronizando colunas...")
+    logger.info("Standardizing columns.")
     df = standardize_columns(df)
 
-    print("[INFO] Limpando dados...")
+    logger.info("Cleaning dataset.")
     df = convert_and_clean(df)
 
-    print("[INFO] Calculando THI e excesso térmico...")
+    logger.info("Computing THI and thermal excess.")
     df = add_thi_and_heat_excess(df, thi_threshold=thi_threshold)
 
     return df

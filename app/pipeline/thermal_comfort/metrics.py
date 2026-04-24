@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -8,14 +10,15 @@ from .constants import DEFAULT_THI_THRESHOLD
 from .ITU import calculate_itu
 
 
+logger = logging.getLogger(__name__)
+
+
 def calculate_specific_humidity(
     temperatura_c: pd.Series | np.ndarray,
     umidade_relativa: pd.Series | np.ndarray,
     pressure_kpa: float = 101.325,
 ) -> np.ndarray:
-    """
-    Calcula umidade específica (kg/kg) a partir de temperatura e umidade relativa.
-    """
+    """Calcula umidade específica (kg/kg) a partir de temperatura e umidade relativa."""
     t = np.asarray(temperatura_c, dtype=float)
     rh = np.asarray(umidade_relativa, dtype=float)
 
@@ -28,9 +31,7 @@ def calculate_specific_humidity(
 
 
 def calcular_dpv(temp: float | np.ndarray, ur: float | np.ndarray) -> float | np.ndarray:
-    """
-    Calcula o Déficit de Pressão de Vapor (DPV) em kPa.
-    """
+    """Calcula o Déficit de Pressão de Vapor (DPV) em kPa."""
     es = 0.61078 * np.exp((17.27 * temp) / (temp + 237.3))
     ea = es * (ur / 100.0)
     dpv = es - ea
@@ -41,12 +42,10 @@ def add_thi_and_heat_excess(
     df: pd.DataFrame,
     thi_threshold: float = DEFAULT_THI_THRESHOLD,
 ) -> pd.DataFrame:
-    """
-    Adiciona colunas de THI e excesso térmico.
-    """
+    """Adiciona colunas de THI e excesso térmico."""
     enriched = df.copy()
 
-    print(f"THI Threshold : {thi_threshold}")
+    logger.info("Using THI threshold: %s", thi_threshold)
     enriched[Column.THI] = calculate_itu(
         enriched[Column.TEMPERATURA],
         enriched[Column.UMIDADE],
@@ -60,9 +59,7 @@ def add_thi_and_heat_excess(
 
 
 def add_heat_load(df: pd.DataFrame, window: int) -> pd.DataFrame:
-    """
-    Calcula carga térmica acumulada em janela móvel por animal.
-    """
+    """Calcula carga térmica acumulada em janela móvel por animal."""
     enriched = df.copy()
     heat_col = f"heat_load_{window}h"
 
