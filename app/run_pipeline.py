@@ -59,6 +59,7 @@ def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
     min_duration = cfg.get("min_duration", DEFAULT_MIN_DURATION)
     thermal_mode = cfg.get("thermal_mode", DEFAULT_THERMAL_MODE)
     output_dir = cfg.get("thermal_output_dir", DEFAULT_OUTPUT_DIR)
+    show_plots = bool(cfg.get("show_plots", False))
 
     df = load_and_prepare_dataset(
         dataset_path=dataset_path,
@@ -75,6 +76,7 @@ def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
             window=window,
             min_duration=min_duration,
             output_dir=output_dir,
+            show_plots=show_plots,
         )
 
     elif thermal_mode == "auto":
@@ -86,6 +88,7 @@ def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
             criterion=criterion,
             min_duration=min_duration,
             output_dir=output_dir,
+            show_plots=show_plots,
         )
 
     else:
