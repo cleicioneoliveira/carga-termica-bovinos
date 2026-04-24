@@ -62,6 +62,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+O pipeline lê arquivos Parquet; por isso `pyarrow` está listado como dependência. As figuras intermediárias usam `seaborn`.
+
 ---
 
 ## Execução
@@ -84,6 +86,18 @@ Para rodar com profiling:
 python -m app.run_pipeline --config app/config.yaml --profile
 ```
 
+Por padrão, o pipeline roda em modo adequado para terminal, batch ou HPC: salva as figuras e fecha as janelas gráficas automaticamente. Para exibir as figuras durante a execução:
+
+```bash
+python -m app.run_pipeline --config app/config.yaml --show-plots
+```
+
+Para depurar mensagens internas do renderizador psicrométrico:
+
+```bash
+python -m app.run_pipeline --config app/config.yaml --verbose-chart
+```
+
 ---
 
 ## Configuração
@@ -103,6 +117,10 @@ Principais blocos:
 - `thi_threshold`: limiar usado para excesso térmico.
 - `thermal_windows`: janelas testadas no modo automático.
 - `thermal_criterion`: critério de escolha da melhor janela.
+- `thermal_output_dir`: diretório de saída dos produtos gerados.
+- `show_plots`: controla se as figuras são exibidas na tela.
+- `suppress_chart_stdout`: controla a supressão de mensagens internas do gráfico psicrométrico.
+- `log_level`: controla o nível de logs no terminal.
 - `density`: resolução e filtragem da densidade psicrométrica.
 - `geometry`: método geométrico (`alpha` ou `convex`).
 - `smoothing`: suavização visual dos polígonos.
@@ -116,6 +134,10 @@ python -m app.run_pipeline --config app/config.yaml --thermal-mode manual --ther
 
 ```bash
 python -m app.run_pipeline --config app/config.yaml --dataset /path/to/dataset.parquet --no-smooth
+```
+
+```bash
+python -m app.run_pipeline --config app/config.yaml --log-level DEBUG
 ```
 
 ---

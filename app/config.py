@@ -78,6 +78,9 @@ def _with_defaults(cfg: dict[str, Any]) -> dict[str, Any]:
     result.setdefault("thermal_criterion", "mean_corr")
     result.setdefault("chart_config_path", "app/chart_config.yaml")
     result.setdefault("output_fig", "fig_comfort_polygon.png")
+    result.setdefault("show_plots", False)
+    result.setdefault("suppress_chart_stdout", True)
+    result.setdefault("log_level", "INFO")
 
     result.setdefault("density", {})
     result["density"].setdefault("bins", 40)
@@ -133,6 +136,11 @@ def validate_config(cfg: dict[str, Any]) -> None:
             "Zone percentiles must satisfy: core_percentile >= "
             "transition_percentile >= limit_percentile"
         )
+
+    log_level = str(cfg.get("log_level", "INFO")).upper()
+    valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+    if log_level not in valid_levels:
+        raise ValueError(f"log_level must be one of {sorted(valid_levels)}")
 
 
 # Backward-compatible import used by older scripts.

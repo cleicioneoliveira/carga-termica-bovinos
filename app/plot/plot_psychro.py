@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import logging
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -11,6 +14,8 @@ from psychchart.loader import load_chart_config
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CHART_CONFIG_PATH = PROJECT_ROOT / "app" / "chart_config.yaml"
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_path(path: str | Path, *, base_dir: Path = PROJECT_ROOT) -> Path:
@@ -37,10 +42,11 @@ def _resolve_chart_config_path(cfg: dict) -> Path:
         if path.exists():
             return path
 
-        print(
-            "[WARNING] Provided chart configuration file does not exist: "
-            f"{path}. Falling back to default configuration: "
-            f"{DEFAULT_CHART_CONFIG_PATH.resolve()}"
+        logger.warning(
+            "Provided chart configuration file does not exist: %s. "
+            "Falling back to default configuration: %s",
+            path,
+            DEFAULT_CHART_CONFIG_PATH.resolve(),
         )
 
     default_path = DEFAULT_CHART_CONFIG_PATH.resolve()
@@ -59,6 +65,14 @@ def _resolve_output_dir(cfg: dict) -> Path:
     resolved = _resolve_path(output_dir)
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
+
+
+def _draw_chart(chart: PsychChart, *, suppress_stdout: bool):
+    """Draw a PsychChart, optionally suppressing verbose third-party stdout."""
+    if suppress_stdout:
+        with contextlib.redirect_stdout(io.StringIO()):
+            return chart.draw()
+    return chart.draw()
 
 
 def plot_psychro(
@@ -113,7 +127,10 @@ def plot_psychro(
     )
 
     chart.density_fields = [density_field]
-    ax = chart.draw()
+    ax = _draw_chart(
+        chart,
+        suppress_stdout=bool(cfg.get("suppress_chart_stdout", True)),
+    )
 
     for name, poly in polygons.items():
         if poly is None or len(poly) == 0:
@@ -132,6 +149,9 @@ def plot_psychro(
     output_dir = _resolve_output_dir(cfg)
     output_path = output_dir / cfg.get("output_fig", "fig_comfort_polygon.png")
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    print(f"[INFO] Figure saved to: {output_path}")
+    logger.info("Figure saved to: %s", output_path)
 
-    plt.show()
+    if cfg.get("show_plots", False):
+        plt.show()
+    else:
+        plt.close(ax.figure)

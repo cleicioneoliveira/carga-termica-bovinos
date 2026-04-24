@@ -50,6 +50,20 @@ thermal_windows: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
 thermal_criterion: "mean_corr"
 
 # ----------------------------------------------------------
+# RUNTIME BEHAVIOR
+# ----------------------------------------------------------
+# Show Matplotlib windows during execution. For batch/HPC/headless
+# runs, keep this false.
+show_plots: false
+
+# Suppress noisy stdout emitted by third-party plotting backends.
+suppress_chart_stdout: true
+
+# Logging level used by the command-line entrypoint.
+# Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level: "INFO"
+
+# ----------------------------------------------------------
 # PSYCHROMETRIC CHART CONFIGURATION
 # ----------------------------------------------------------
 # Relative paths are resolved from the repository root.

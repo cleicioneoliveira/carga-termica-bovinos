@@ -6,4 +6,6 @@ pydantic
 pyyaml
 alphashape
 shapely
+seaborn
+pyarrow
 

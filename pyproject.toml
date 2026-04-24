@@ -3,7 +3,9 @@ name = "carga-termica-bovinos"
 version = "0.1.0"
 description = "Empirical bovine thermal comfort analysis in psychrometric space"
 authors = [
-    { name = "João Gerd Zell de Mattos", email = "seu-email@exemplo.com" }
+    { name = "João Gerd Zell de Mattos" },
+    { name = "Cleicione Moura de Oliveira" },
+    { name = "Rafael Augusto Satrapa" },
 ]
 readme = "README.md"
 requires-python = ">=3.9"
@@ -17,12 +19,14 @@ dependencies = [
     "pyyaml",
     "alphashape",
     "shapely",
+    "seaborn",
+    "pyarrow",
 ]
 
 [tool.setuptools.packages.find]
-where = ["app"]
+where = ["."]
+include = ["app*"]
 
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
-
