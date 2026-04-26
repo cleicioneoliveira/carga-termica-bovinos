@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .columns import Column, REQUIRED_INPUT_COLUMNS, STANDARDIZATION_MAP
+from .columns import COLUMN_ALIASES, Column, REQUIRED_INPUT_COLUMNS, STANDARDIZATION_MAP
 from .metrics import add_thi_and_heat_excess
 
 
@@ -13,8 +13,27 @@ logger = logging.getLogger(__name__)
 
 
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Renomeia colunas esperadas do dataset para a nomenclatura interna padrão."""
-    return df.rename(columns=STANDARDIZATION_MAP)
+    """Rename known source columns to the canonical internal schema.
+
+    The function first applies broad aliases such as ``timestamp -> data_hora``
+    and ``animal_id -> brinco``. It then applies the thermal-analysis mapping,
+    for example ``temperatura_compost_1 -> temperatura`` and
+    ``ofegacao_hora -> ofegacao``.
+    """
+    rename_map: dict[str, str] = {}
+
+    for source, target in COLUMN_ALIASES.items():
+        if source in df.columns and target not in df.columns:
+            rename_map[source] = target
+
+    for source, target in STANDARDIZATION_MAP.items():
+        if source in df.columns and target not in df.columns:
+            rename_map[source] = target
+
+    if rename_map:
+        logger.info("Renaming columns using canonical schema: %s", rename_map)
+
+    return df.rename(columns=rename_map)
 
 
 def convert_and_clean(df: pd.DataFrame) -> pd.DataFrame:
