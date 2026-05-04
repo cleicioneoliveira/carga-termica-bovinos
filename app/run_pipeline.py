@@ -60,10 +60,12 @@ def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
     thermal_mode = cfg.get("thermal_mode", DEFAULT_THERMAL_MODE)
     output_dir = cfg.get("thermal_output_dir", DEFAULT_OUTPUT_DIR)
     show_plots = bool(cfg.get("show_plots", False))
+    preprocessing_cfg = cfg.get("thermal_input_preprocessing", {})
 
     df = load_and_prepare_dataset(
         dataset_path=dataset_path,
         thi_threshold=thi_threshold,
+        preprocessing_cfg=preprocessing_cfg,
     )
 
     if df.empty:
@@ -179,6 +181,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override thermal_window when using manual mode.",
     )
     parser.add_argument(
+        "--integer-thermal-inputs",
+        action="store_true",
+        help="Convert temperature and humidity to integer-like values before THI calculation.",
+    )
+    parser.add_argument(
+        "--integer-method",
+        choices=["round", "floor", "ceil", "trunc"],
+        default=None,
+        help="Integer conversion method for --integer-thermal-inputs.",
+    )
+    parser.add_argument(
         "--show-plots",
         action="store_true",
         help="Display Matplotlib windows after saving figures.",
@@ -230,6 +243,9 @@ def apply_cli_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> dict[s
     updated = dict(cfg)
     updated["density"] = dict(cfg.get("density", {}))
     updated["smoothing"] = dict(cfg.get("smoothing", {}))
+    updated["thermal_input_preprocessing"] = dict(
+        cfg.get("thermal_input_preprocessing", {})
+    )
 
     if args.dataset:
         updated["dataset_path"] = args.dataset
@@ -239,6 +255,14 @@ def apply_cli_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> dict[s
 
     if args.thermal_window is not None:
         updated["thermal_window"] = args.thermal_window
+
+    if args.integer_thermal_inputs:
+        updated["thermal_input_preprocessing"][
+            "convert_temperature_humidity_to_integer"
+        ] = True
+
+    if args.integer_method is not None:
+        updated["thermal_input_preprocessing"]["integer_method"] = args.integer_method
 
     if args.no_smooth:
         updated["smoothing"]["enabled"] = False
