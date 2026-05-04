@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -22,12 +23,17 @@ logger = logging.getLogger(__name__)
 def load_and_prepare_dataset(
     dataset_path: str | Path,
     thi_threshold: float,
+    preprocessing_cfg: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """
     API pública para carga e preparação do dataset.
     Assinatura preservada para compatibilidade com o framework externo.
     """
-    return load_and_prepare(dataset_path=dataset_path, thi_threshold=thi_threshold)
+    return load_and_prepare(
+        dataset_path=dataset_path,
+        thi_threshold=thi_threshold,
+        preprocessing_cfg=preprocessing_cfg,
+    )
 
 
 def run_manual_mode(

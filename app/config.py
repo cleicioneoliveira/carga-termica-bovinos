@@ -82,6 +82,12 @@ def _with_defaults(cfg: dict[str, Any]) -> dict[str, Any]:
     result.setdefault("suppress_chart_stdout", True)
     result.setdefault("log_level", "INFO")
 
+    result.setdefault("thermal_input_preprocessing", {})
+    result["thermal_input_preprocessing"].setdefault(
+        "convert_temperature_humidity_to_integer", False
+    )
+    result["thermal_input_preprocessing"].setdefault("integer_method", "round")
+
     result.setdefault("density", {})
     result["density"].setdefault("bins", 40)
     result["density"].setdefault("min_density", 0.001)
@@ -141,6 +147,15 @@ def validate_config(cfg: dict[str, Any]) -> None:
     valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
     if log_level not in valid_levels:
         raise ValueError(f"log_level must be one of {sorted(valid_levels)}")
+
+    preprocessing = cfg.get("thermal_input_preprocessing", {})
+    integer_method = str(preprocessing.get("integer_method", "round")).lower()
+    valid_integer_methods = {"round", "floor", "ceil", "trunc"}
+    if integer_method not in valid_integer_methods:
+        raise ValueError(
+            "thermal_input_preprocessing.integer_method must be one of "
+            f"{sorted(valid_integer_methods)}"
+        )
 
 
 # Backward-compatible import used by older scripts.
