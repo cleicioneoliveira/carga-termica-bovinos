@@ -17,6 +17,22 @@
 # behavioral and health-status information.
 dataset_path: "/media/extra/wrk/CONFORTO/dataset/processado/monitoramento_saude_unificado.parquet"
 
+# Optional experimental preprocessing for sensitivity analysis.
+# Keep disabled for the main analysis. Enable only to test whether
+# the change from integer to floating-point environmental values
+# affects the selected accumulated heat-load window.
+thermal_input_preprocessing:
+  # When true, temperature and humidity used by the thermal pipeline
+  # are converted to integers before THI and heat excess are computed.
+  convert_temperature_humidity_to_integer: false
+
+  # Conversion method:
+  #   round -> nearest integer, similar to common CSV/display rounding
+  #   floor -> always down
+  #   ceil  -> always up
+  #   trunc -> remove decimal part toward zero
+  integer_method: "round"
+
 # ----------------------------------------------------------
 # THERMAL COMFORT EXTRACTION
 # ----------------------------------------------------------
