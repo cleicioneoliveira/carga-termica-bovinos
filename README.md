@@ -64,7 +64,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-O pipeline lê arquivos Parquet; por isso `pyarrow` está listado como dependência. As figuras intermediárias usam `seaborn`.
+O pipeline lê arquivos `.parquet` e `.csv`. Para Parquet, `pyarrow` está listado como dependência. As figuras intermediárias usam `seaborn`.
 
 ---
 
@@ -80,6 +80,24 @@ Também é possível usar o wrapper de compatibilidade:
 
 ```bash
 python -m app.run --config app/config.yaml
+```
+
+O `dataset_path` pode apontar para arquivo Parquet ou CSV:
+
+```yaml
+dataset_path: "/media/extra/wrk/CONFORTO/dataset/processado/monitoramento_saude_unificado.parquet"
+```
+
+ou:
+
+```yaml
+dataset_path: "/media/extra/wrk/CONFORTO/dataset/processado/monitoramento_saude_unificado.csv"
+```
+
+Também é possível sobrescrever pela linha de comando:
+
+```bash
+python -m app.run_pipeline --config app/config.yaml --dataset dataset/processado/monitoramento_saude_unificado.csv
 ```
 
 Para rodar com profiling:
@@ -151,7 +169,7 @@ Esse arquivo é a fonte única de verdade para parâmetros ajustáveis. O módul
 
 Principais blocos:
 
-- `dataset_path`: caminho do dataset unificado.
+- `dataset_path`: caminho do dataset unificado, aceitando `.parquet` ou `.csv`.
 - `thermal_input_preprocessing`: permite comparar dados corrigidos float contra valores convertidos para inteiro.
 - `thermal_mode`: modo `manual` ou `auto`.
 - `thi_threshold`: limiar usado para excesso térmico.
@@ -173,7 +191,7 @@ python -m app.run_pipeline --config app/config.yaml --thermal-mode manual --ther
 ```
 
 ```bash
-python -m app.run_pipeline --config app/config.yaml --dataset /path/to/dataset.parquet --no-smooth
+python -m app.run_pipeline --config app/config.yaml --dataset /path/to/dataset.csv --no-smooth
 ```
 
 ```bash

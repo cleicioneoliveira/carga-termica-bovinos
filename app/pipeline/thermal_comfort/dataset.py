@@ -139,8 +139,23 @@ def convert_and_clean(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_dataset(dataset_path: str | Path) -> pd.DataFrame:
-    """Carrega dataset parquet."""
-    return pd.read_parquet(dataset_path)
+    """Load a dataset from Parquet or CSV based on file extension."""
+    path = Path(dataset_path).expanduser()
+    suffix = path.suffix.lower()
+
+    if not path.exists():
+        raise FileNotFoundError(f"Dataset file not found: {path}")
+
+    if suffix == ".parquet":
+        return pd.read_parquet(path)
+
+    if suffix == ".csv":
+        return pd.read_csv(path, low_memory=False)
+
+    raise ValueError(
+        "Unsupported dataset format. Use .parquet or .csv. "
+        f"Received: {path}"
+    )
 
 
 def load_and_prepare(
