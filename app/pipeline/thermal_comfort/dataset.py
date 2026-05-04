@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from .columns import COLUMN_ALIASES, Column, REQUIRED_INPUT_COLUMNS, STANDARDIZATION_MAP
@@ -34,6 +36,63 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
         logger.info("Renaming columns using canonical schema: %s", rename_map)
 
     return df.rename(columns=rename_map)
+
+
+def _convert_series_to_integer(series: pd.Series, method: str) -> pd.Series:
+    """Convert a numeric Series to integer-like float values using a method."""
+    method = method.lower()
+
+    if method == "round":
+        converted = np.rint(series)
+    elif method == "floor":
+        converted = np.floor(series)
+    elif method == "ceil":
+        converted = np.ceil(series)
+    elif method == "trunc":
+        converted = np.trunc(series)
+    else:
+        raise ValueError(
+            "Invalid integer conversion method. Use one of: "
+            "round, floor, ceil, trunc."
+        )
+
+    return pd.Series(converted, index=series.index)
+
+
+def apply_thermal_input_preprocessing(
+    df: pd.DataFrame,
+    preprocessing_cfg: dict[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Apply optional experimental preprocessing to thermal inputs.
+
+    This is intended for sensitivity analysis only. It allows comparing the
+    corrected floating-point environmental dataset against an integer-valued
+    version similar to the original monitoring data.
+    """
+    preprocessing_cfg = preprocessing_cfg or {}
+    convert_to_integer = bool(
+        preprocessing_cfg.get("convert_temperature_humidity_to_integer", False)
+    )
+
+    if not convert_to_integer:
+        return df
+
+    method = str(preprocessing_cfg.get("integer_method", "round")).lower()
+    converted = df.copy()
+
+    logger.info(
+        "Converting thermal inputs to integer-like values using method '%s'.",
+        method,
+    )
+
+    for column in (Column.TEMPERATURA, Column.UMIDADE):
+        if column not in converted.columns:
+            raise ValueError(
+                f"Cannot convert thermal input to integer: missing column {column!r}."
+            )
+        converted[column] = _convert_series_to_integer(converted[column], method)
+
+    return converted
 
 
 def convert_and_clean(df: pd.DataFrame) -> pd.DataFrame:
@@ -84,7 +143,11 @@ def load_dataset(dataset_path: str | Path) -> pd.DataFrame:
     return pd.read_parquet(dataset_path)
 
 
-def load_and_prepare(dataset_path: str | Path, thi_threshold: float) -> pd.DataFrame:
+def load_and_prepare(
+    dataset_path: str | Path,
+    thi_threshold: float,
+    preprocessing_cfg: dict[str, Any] | None = None,
+) -> pd.DataFrame:
     """Carrega, padroniza, limpa e calcula métricas térmicas básicas."""
     logger.info("Loading dataset: %s", dataset_path)
     df = load_dataset(dataset_path)
@@ -94,6 +157,8 @@ def load_and_prepare(dataset_path: str | Path, thi_threshold: float) -> pd.DataF
 
     logger.info("Cleaning dataset.")
     df = convert_and_clean(df)
+
+    df = apply_thermal_input_preprocessing(df, preprocessing_cfg)
 
     logger.info("Computing THI and thermal excess.")
     df = add_thi_and_heat_excess(df, thi_threshold=thi_threshold)
