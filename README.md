@@ -27,6 +27,8 @@ raw dataset
 ↓
 padronização e limpeza
 ↓
+pré-processamento experimental opcional de T/RH
+↓
 cálculo de THI
 ↓
 cálculo de excesso térmico
@@ -100,6 +102,43 @@ python -m app.run_pipeline --config app/config.yaml --verbose-chart
 
 ---
 
+## Comparação float versus inteiro
+
+Para investigar se a mudança dos dados ambientais de valores inteiros para valores de ponto flutuante alterou a janela ótima de carga térmica, o pipeline possui uma opção experimental de pré-processamento.
+
+Por padrão, a análise usa os valores corrigidos como ponto flutuante:
+
+```bash
+python -m app.run_pipeline --config app/config.yaml
+```
+
+Para rodar a mesma análise convertendo temperatura e umidade para inteiros antes do cálculo do THI:
+
+```bash
+python -m app.run_pipeline --config app/config.yaml --integer-thermal-inputs --integer-method round
+```
+
+Métodos disponíveis:
+
+```text
+round -> inteiro mais próximo
+floor -> arredonda para baixo
+ceil  -> arredonda para cima
+trunc -> remove a parte decimal em direção a zero
+```
+
+A opção equivalente no `app/config.yaml` é:
+
+```yaml
+thermal_input_preprocessing:
+  convert_temperature_humidity_to_integer: false
+  integer_method: "round"
+```
+
+Essa opção deve ser usada apenas para análise de sensibilidade. Ela não modifica o arquivo original e é aplicada somente em memória, depois da padronização das colunas e antes do cálculo de THI e `heat_excess`.
+
+---
+
 ## Configuração
 
 A configuração oficial do pipeline fica em:
@@ -113,6 +152,7 @@ Esse arquivo é a fonte única de verdade para parâmetros ajustáveis. O módul
 Principais blocos:
 
 - `dataset_path`: caminho do dataset unificado.
+- `thermal_input_preprocessing`: permite comparar dados corrigidos float contra valores convertidos para inteiro.
 - `thermal_mode`: modo `manual` ou `auto`.
 - `thi_threshold`: limiar usado para excesso térmico.
 - `thermal_windows`: janelas testadas no modo automático.
