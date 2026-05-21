@@ -175,13 +175,19 @@ def _summarize_window(window: int, corr_values: np.ndarray) -> dict[str, float |
     }
 
 
-def run_window_analysis(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
+def run_window_analysis(
+    df: pd.DataFrame,
+    windows: list[int],
+    *,
+    input_frequency_minutes: int = 60,
+    weighted_by_time: bool = False,
+) -> pd.DataFrame:
     """Evaluate candidate windows and return aggregate metrics.
 
-    The scientific result is unchanged: for each candidate window, heat load is
-    accumulated per animal and correlated with panting. The implementation now
-    validates the window list, logs progress through Python logging and keeps
-    the result-building logic isolated for easier testing.
+    Window values are expressed in hours. In legacy mode, the original behavior
+    is preserved and ``window`` is also the number of records. In weighted mode,
+    ``window`` is converted internally to the correct number of records using
+    ``input_frequency_minutes`` and the heat excess is multiplied by ``dt``.
     """
     unique_windows = sorted({int(window) for window in windows})
     if not unique_windows:
@@ -195,7 +201,12 @@ def run_window_analysis(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
     for window in unique_windows:
         logger.info("Testing accumulation window: %sh", window)
 
-        temp_df = add_heat_load(df, window)
+        temp_df = add_heat_load(
+            df,
+            window,
+            input_frequency_minutes=input_frequency_minutes,
+            weighted_by_time=weighted_by_time,
+        )
         heat_col = f"heat_load_{window}h"
         corr_values = analyze_per_animal(temp_df, heat_col)
         results.append(_summarize_window(window, corr_values))
