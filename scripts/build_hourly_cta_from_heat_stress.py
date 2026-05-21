@@ -73,18 +73,26 @@ def calculate_itu(temp_c: pd.Series, humidity_pct: pd.Series) -> pd.Series:
 
 
 def prepare_heat_data(path: Path, humidity_unit: str) -> pd.DataFrame:
+    if humidity_unit not in {"auto", "pct", "fraction"}:
+        raise ValueError("humidity_unit must be auto, pct or fraction")
+
     df = normalize_columns(read_table(path))
     out = df.loc[:, list(REQUIRED)].copy()
     out["timestamp"] = pd.to_datetime(out["timestamp"], errors="coerce")
     out["temperature"] = pd.to_numeric(out["temperature"], errors="coerce")
     out["humidity"] = pd.to_numeric(out["humidity"], errors="coerce")
     out = out.dropna(subset=list(REQUIRED)).copy()
-    if humidity_unit == "auto" and out["humidity"].quantile(0.95) <= 1.5:
+
+    if humidity_unit == "fraction":
         out["humidity"] = out["humidity"] * 100.0
-    elif humidity_unit == "fraction":
-        out["humidity"] = out["humidity"] * 100.0
-    elif humidity_unit != "pct":
-        raise ValueError("humidity_unit must be auto, pct or fraction")
+    elif humidity_unit == "auto":
+        q95 = out["humidity"].quantile(0.95)
+        if q95 <= 1.5:
+            LOGGER.info("Humidity appears to be fractional. Converting to percent.")
+            out["humidity"] = out["humidity"] * 100.0
+        else:
+            LOGGER.info("Humidity appears to be already in percent.")
+
     return out.sort_values(["dispositivo", "timestamp"]).reset_index(drop=True)
 
 
@@ -158,7 +166,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level), format="[%(levelname)s] %(message)s", force=True)
-    build_hourly_cta(args.input, args.output, args.windows, args.threshold, args.input_frequency_minutes, args.max_gap_minutes, args.humidity_unit, args.output_csv)
+    build_hourly_cta(
+        input_path=args.input,
+        output_path=args.output,
+        windows=args.windows,
+        threshold=args.threshold,
+        freq_min=args.input_frequency_minutes,
+        max_gap_min=args.max_gap_minutes,
+        humidity_unit=args.humidity_unit,
+        output_csv=args.output_csv,
+    )
     return 0
 
 
