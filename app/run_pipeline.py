@@ -42,18 +42,7 @@ def configure_logging(level: str = "INFO") -> None:
 
 
 def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
-    """Build the comfort-period dataset used by the psychrometric stage.
-
-    Parameters
-    ----------
-    cfg : dict
-        Pipeline configuration loaded from YAML.
-
-    Returns
-    -------
-    pandas.DataFrame
-        DataFrame containing only valid comfort-period records.
-    """
+    """Build the comfort-period dataset used by the psychrometric stage."""
     dataset_path = cfg["dataset_path"]
     thi_threshold = cfg.get("thi_threshold", DEFAULT_THI_THRESHOLD)
     min_duration = cfg.get("min_duration", DEFAULT_MIN_DURATION)
@@ -61,6 +50,7 @@ def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
     output_dir = cfg.get("thermal_output_dir", DEFAULT_OUTPUT_DIR)
     show_plots = bool(cfg.get("show_plots", False))
     preprocessing_cfg = cfg.get("thermal_input_preprocessing", {})
+    time_resolution_cfg = cfg.get("thermal_time_resolution", {})
 
     df = load_and_prepare_dataset(
         dataset_path=dataset_path,
@@ -79,6 +69,7 @@ def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
             min_duration=min_duration,
             output_dir=output_dir,
             show_plots=show_plots,
+            time_resolution_cfg=time_resolution_cfg,
         )
 
     elif thermal_mode == "auto":
@@ -91,6 +82,7 @@ def build_comfort_dataset(cfg: dict[str, Any]) -> pd.DataFrame:
             min_duration=min_duration,
             output_dir=output_dir,
             show_plots=show_plots,
+            time_resolution_cfg=time_resolution_cfg,
         )
 
     else:
@@ -178,7 +170,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--thermal-window",
         type=int,
         default=None,
-        help="Override thermal_window when using manual mode.",
+        help="Override thermal_window when using manual mode. Expressed in hours.",
+    )
+    parser.add_argument(
+        "--input-frequency-minutes",
+        type=int,
+        default=None,
+        help="Minutes represented by each thermal record, e.g. 60 or 5.",
+    )
+    parser.add_argument(
+        "--weighted-by-time",
+        action="store_true",
+        help="Compute CTA as sum(heat_excess * delta_t_hours). Use for 5-min data.",
     )
     parser.add_argument(
         "--integer-thermal-inputs",
@@ -246,6 +249,9 @@ def apply_cli_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> dict[s
     updated["thermal_input_preprocessing"] = dict(
         cfg.get("thermal_input_preprocessing", {})
     )
+    updated["thermal_time_resolution"] = dict(
+        cfg.get("thermal_time_resolution", {})
+    )
 
     if args.dataset:
         updated["dataset_path"] = args.dataset
@@ -255,6 +261,14 @@ def apply_cli_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> dict[s
 
     if args.thermal_window is not None:
         updated["thermal_window"] = args.thermal_window
+
+    if args.input_frequency_minutes is not None:
+        updated["thermal_time_resolution"]["input_frequency_minutes"] = (
+            args.input_frequency_minutes
+        )
+
+    if args.weighted_by_time:
+        updated["thermal_time_resolution"]["weighted_by_time"] = True
 
     if args.integer_thermal_inputs:
         updated["thermal_input_preprocessing"][

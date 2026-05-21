@@ -58,14 +58,77 @@ def add_thi_and_heat_excess(
     return enriched
 
 
-def add_heat_load(df: pd.DataFrame, window: int) -> pd.DataFrame:
-    """Calcula carga térmica acumulada em janela móvel por animal."""
+def _records_per_hour(input_frequency_minutes: int) -> int:
+    """Return the number of records expected in one hour."""
+    if input_frequency_minutes <= 0:
+        raise ValueError("input_frequency_minutes must be greater than zero.")
+
+    if 60 % input_frequency_minutes != 0:
+        raise ValueError(
+            "input_frequency_minutes must divide 60 exactly. "
+            f"Received: {input_frequency_minutes}"
+        )
+
+    return int(60 / input_frequency_minutes)
+
+
+def add_heat_load(
+    df: pd.DataFrame,
+    window: int,
+    *,
+    input_frequency_minutes: int = 60,
+    weighted_by_time: bool = False,
+) -> pd.DataFrame:
+    """Calcula carga térmica acumulada em janela móvel por animal.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Dataset with ``heat_excess`` already computed.
+    window : int
+        Accumulation window expressed in hours.
+    input_frequency_minutes : int, optional
+        Time represented by each environmental record. The default, 60,
+        preserves the historical hourly behavior.
+    weighted_by_time : bool, optional
+        When false, the function preserves the original behavior and sums
+        ``heat_excess`` over the last ``window`` records. When true, it treats
+        ``window`` as hours, converts it to records and computes
+        ``sum(heat_excess * delta_t_hours)``. For 5-minute data,
+        ``delta_t_hours = 5 / 60`` and a 15 h window uses 180 records.
+    """
     enriched = df.copy()
     heat_col = f"heat_load_{window}h"
 
+    if not weighted_by_time:
+        logger.info(
+            "Computing heat load using legacy record-based rolling sum: %sh.",
+            window,
+        )
+        enriched[heat_col] = (
+            enriched.groupby(Column.ANIMAL_ID, observed=False)[Column.HEAT_EXCESS]
+            .transform(lambda series: series.rolling(window, min_periods=1).sum())
+        )
+        return enriched
+
+    records_per_hour = _records_per_hour(input_frequency_minutes)
+    window_records = int(window * records_per_hour)
+    delta_t_hours = input_frequency_minutes / 60.0
+
+    logger.info(
+        "Computing time-weighted heat load: %sh, %s min records, %s records, dt=%s h.",
+        window,
+        input_frequency_minutes,
+        window_records,
+        delta_t_hours,
+    )
+
+    def rolling_weighted_sum(series: pd.Series) -> pd.Series:
+        return (series * delta_t_hours).rolling(window_records, min_periods=1).sum()
+
     enriched[heat_col] = (
         enriched.groupby(Column.ANIMAL_ID, observed=False)[Column.HEAT_EXCESS]
-        .transform(lambda series: series.rolling(window, min_periods=1).sum())
+        .transform(rolling_weighted_sum)
     )
 
     return enriched

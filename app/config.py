@@ -88,6 +88,10 @@ def _with_defaults(cfg: dict[str, Any]) -> dict[str, Any]:
     )
     result["thermal_input_preprocessing"].setdefault("integer_method", "round")
 
+    result.setdefault("thermal_time_resolution", {})
+    result["thermal_time_resolution"].setdefault("input_frequency_minutes", 60)
+    result["thermal_time_resolution"].setdefault("weighted_by_time", False)
+
     result.setdefault("density", {})
     result["density"].setdefault("bins", 40)
     result["density"].setdefault("min_density", 0.001)
@@ -129,6 +133,19 @@ def validate_config(cfg: dict[str, Any]) -> None:
     criterion = cfg.get("thermal_criterion")
     if criterion not in {"mean_corr", "median_corr"}:
         raise ValueError("thermal_criterion must be 'mean_corr' or 'median_corr'")
+
+    time_resolution = cfg.get("thermal_time_resolution", {})
+    input_frequency_minutes = int(time_resolution.get("input_frequency_minutes", 60))
+    if input_frequency_minutes <= 0:
+        raise ValueError(
+            "thermal_time_resolution.input_frequency_minutes must be greater than zero"
+        )
+
+    if 60 % input_frequency_minutes != 0:
+        raise ValueError(
+            "thermal_time_resolution.input_frequency_minutes must divide 60 exactly "
+            "so hourly windows can be represented by an integer number of records."
+        )
 
     if int(cfg["density"]["bins"]) < 10:
         raise ValueError("density.bins must be >= 10")
