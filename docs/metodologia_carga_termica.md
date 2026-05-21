@@ -6,15 +6,76 @@ Este documento descreve a metodologia implementada no pipeline de análise de ca
 
 A abordagem parte do princípio de que conforto térmico não deve ser tratado apenas como uma condição instantânea definida por limites fixos de temperatura e umidade. No contexto de bovinos leiteiros em ambiente produtivo, a resposta fisiológica e comportamental tende a refletir o histórico térmico recente, especialmente quando o animal é submetido a estresse térmico persistente.
 
-## 2. Dados de entrada
+## 2. Fontes de dados
 
-O pipeline espera um dataset unificado contendo, no mínimo, informações de identificação do animal, data e hora da observação, temperatura do ar, umidade relativa e tempo ou intensidade de ofegação.
+A análise envolve duas escalas de dados diferentes.
 
-Durante a preparação, as colunas são padronizadas para nomes internos, convertidas para tipos numéricos ou temporais e ordenadas por animal e data/hora. Registros sem os campos essenciais são removidos.
+A primeira fonte é o `heat_stress_report`, utilizado como fonte ambiental de maior resolução temporal. Esse arquivo contém medições sub-horárias, normalmente em intervalos de 5 minutos, por dispositivo ambiental. O contrato mínimo de colunas segue o mesmo padrão utilizado no repositório `environment_correction`:
 
-## 3. Cálculo do índice térmico instantâneo
+```text
+timestamp
+dispositivo
+temperature
+humidity
+```
 
-O primeiro passo térmico é calcular o Índice de Temperatura e Umidade, tratado internamente como ITU/THI por compatibilidade com versões anteriores do código. A partir dele, calcula-se o excesso térmico em relação a um limiar crítico definido na configuração.
+Também são aceitos aliases comuns, como `data`, `data_hora`, `datetime`, `device`, `sensor`, `temperatura` e `umidade`.
+
+A segunda fonte é o dataset horário por animal, contendo as variáveis comportamentais e fisiológicas indiretas, como ofegação, ruminação, atividade e ócio. Essas variáveis são disponibilizadas como acumulados horários por animal.
+
+Assim, a metodologia correta é calcular a carga térmica acumulada a partir do `heat_stress_report` em 5 minutos, agregar a CTA para a escala horária e, somente depois, unir essa informação ambiental horária à base animal horária.
+
+## 3. Etapa ambiental: geração da CTA horária a partir do heat_stress_report
+
+O script `scripts/build_hourly_cta_from_heat_stress.py` foi criado para gerar uma tabela ambiental horária pronta para uso na dissertação.
+
+Ele executa as seguintes etapas:
+
+1. lê o `heat_stress_report` em CSV ou Parquet;
+2. normaliza os nomes das colunas;
+3. valida as colunas `timestamp`, `dispositivo`, `temperature` e `humidity`;
+4. converte data/hora, temperatura e umidade para tipos adequados;
+5. calcula o Índice de Temperatura e Umidade (ITU);
+6. calcula o excesso térmico acima de 72;
+7. calcula a CTA ponderada pelo intervalo temporal de cada registro;
+8. agrega os resultados para a escala horária por dispositivo;
+9. salva uma tabela ambiental horária em CSV ou Parquet.
+
+Comando recomendado:
+
+```bash
+python scripts/build_hourly_cta_from_heat_stress.py \
+  --input /caminho/para/heat_stress_report_f1293.csv \
+  --output outputs_conforto/cta_horaria_from_heat_stress.parquet \
+  --output-csv outputs_conforto/cta_horaria_from_heat_stress.csv \
+  --windows 6 9 12 15 18 24 \
+  --threshold 72 \
+  --input-frequency-minutes 5 \
+  --humidity-unit auto
+```
+
+A saída gerada possui colunas no seguinte formato:
+
+```text
+data_hora
+dispositivo
+temperatura
+umidade
+itu
+heat_excess
+cta_6h
+cta_9h
+cta_12h
+cta_15h
+cta_18h
+cta_24h
+```
+
+Essa saída ainda não contém ofegação ou identificação de animal. Ela representa a etapa ambiental da análise.
+
+## 4. Cálculo do índice térmico instantâneo
+
+O primeiro passo térmico é calcular o Índice de Temperatura e Umidade. A partir dele, calcula-se o excesso térmico em relação ao limiar crítico definido na configuração.
 
 ```text
 heat_excess_t = max(ITU_t - ITU_threshold, 0)
@@ -26,13 +87,15 @@ No arquivo `app/config.yaml`, o limiar padrão é:
 thi_threshold: 72
 ```
 
+Apesar do nome histórico `thi_threshold` no código, o texto da dissertação deve usar a terminologia em português: Índice de Temperatura e Umidade (ITU).
+
 Esse valor representa o ponto a partir do qual o ambiente passa a contribuir para a carga térmica acumulada. Valores de ITU abaixo do limiar não aumentam a carga acumulada.
 
-## 4. Carga térmica acumulada
+## 5. Carga térmica acumulada
 
 A carga térmica acumulada pode ser calculada de duas formas, conforme a resolução temporal dos dados ambientais.
 
-### 4.1 Modo legado, para dados horários
+### 5.1 Modo legado, para dados horários
 
 O modo legado preserva o comportamento original do pipeline e assume dados horários regulares. Nesse caso, uma janela de 15 representa os últimos 15 registros, equivalentes a 15 horas.
 
@@ -48,7 +111,7 @@ thermal_time_resolution:
   weighted_by_time: false
 ```
 
-### 4.2 Modo ponderado no tempo, para dados de 5 minutos
+### 5.2 Modo ponderado no tempo, para dados de 5 minutos
 
 Quando os dados ambientais estão em intervalos de 5 minutos, a carga térmica não deve ser calculada como soma simples dos registros, pois isso inflaria artificialmente a carga em relação à escala horária. Nesse caso, cada registro precisa ser ponderado pelo intervalo temporal que representa.
 
@@ -74,20 +137,42 @@ thermal_time_resolution:
   weighted_by_time: true
 ```
 
-Também é possível ativar esse modo pela linha de comando:
+## 6. Etapa animal: integração com ofegação horária
 
-```bash
-python -m app.run_pipeline \
-  --config app/config.yaml \
-  --dataset /caminho/para/dataset_5min.parquet \
-  --thermal-mode auto \
-  --input-frequency-minutes 5 \
-  --weighted-by-time
+Depois de gerar a tabela `cta_horaria_from_heat_stress`, ela deve ser unida à base animal horária, que contém pelo menos:
+
+```text
+brinco
+data_hora
+ofegacao_hora
 ```
 
-## 5. Modos de execução
+A união deve respeitar o mapeamento entre `dispositivo` e o compost ou galpão correspondente, conforme definido pela auditoria do `environment_correction`. A tabela ambiental horária fornece a CTA por dispositivo; a tabela animal horária fornece a resposta por animal.
 
-O pipeline permite dois modos.
+O resultado esperado para a análise CTA versus ofegação deve ter uma estrutura semelhante a:
+
+```text
+brinco
+data_hora
+ofegacao
+dispositivo
+temperatura
+umidade
+itu
+heat_excess
+cta_6h
+cta_9h
+cta_12h
+cta_15h
+cta_18h
+cta_24h
+```
+
+Esse dataset integrado é a base correta para comparar janelas de CTA e definir qual escala temporal apresenta maior associação com a ofegação.
+
+## 7. Modos de execução do pipeline integrado
+
+O pipeline principal permite dois modos.
 
 ### Modo manual
 
@@ -112,7 +197,7 @@ thermal_criterion: "mean_corr"
 
 Para cada janela, o pipeline calcula a correlação entre carga térmica acumulada e ofegação por animal. Em seguida, agrega as correlações individuais por média e mediana, além de registrar o número de animais com correlação positiva ou negativa.
 
-## 6. Escolha da melhor janela temporal
+## 8. Escolha da melhor janela temporal
 
 No modo automático, a melhor janela é definida pelo maior valor do critério escolhido. Os critérios atualmente aceitos são:
 
@@ -131,7 +216,7 @@ E a tabela completa das janelas é salva em:
 outputs_conforto/resultados_janelas.csv
 ```
 
-## 7. Definição dos períodos de conforto
+## 9. Definição dos períodos de conforto
 
 Após definir a janela de carga térmica, o pipeline identifica períodos de conforto combinando baixa carga térmica acumulada e baixa ofegação. A lógica operacional considera percentis individuais por animal, permitindo que cada animal tenha seu próprio limiar relativo.
 
@@ -143,13 +228,13 @@ min_duration: 3
 
 No modo legado horário, esse valor representa três registros consecutivos. No modo ponderado para dados de 5 minutos, esse valor é interpretado como horas e convertido internamente para o número correspondente de registros. Assim, `min_duration: 3` equivale a 36 registros consecutivos quando `input_frequency_minutes: 5`.
 
-## 8. Projeção no espaço psicrométrico
+## 10. Projeção no espaço psicrométrico
 
 Os registros classificados como conforto são projetados no espaço psicrométrico, usando temperatura de bulbo seco no eixo x e razão de umidade no eixo y.
 
 Essa transformação permite interpretar o conforto em termos termodinâmicos mais consistentes do que temperatura e umidade relativa brutas.
 
-## 9. Campo de densidade
+## 11. Campo de densidade
 
 A distribuição dos pontos de conforto no espaço psicrométrico é convertida em um histograma bidimensional normalizado. Esse campo representa a densidade empírica das condições ambientais associadas ao conforto.
 
@@ -163,7 +248,7 @@ density:
   percentile: 65
 ```
 
-## 10. Zonas de conforto
+## 12. Zonas de conforto
 
 As zonas são definidas por percentis da densidade empírica:
 
@@ -182,7 +267,7 @@ A interpretação adotada é:
 
 Essas zonas não devem ser interpretadas como limites fisiológicos universais, mas como regiões derivadas dos dados e da metodologia aplicada.
 
-## 11. Extração geométrica
+## 13. Extração geométrica
 
 Os pontos das zonas são convertidos em polígonos por meio de método geométrico configurável:
 
@@ -197,7 +282,7 @@ As opções disponíveis são:
 - `alpha`: alpha shape, mais flexível e capaz de representar concavidades;
 - `convex`: envoltória convexa, útil como referência simples.
 
-## 12. Suavização visual
+## 14. Suavização visual
 
 A suavização é aplicada apenas para melhorar a apresentação gráfica:
 
@@ -209,9 +294,14 @@ smoothing:
 
 A suavização não deve ser usada como substituto da geometria bruta para análise quantitativa.
 
-## 13. Saídas principais
+## 15. Saídas principais
 
-O pipeline gera, por padrão, os seguintes arquivos em `outputs_conforto/`:
+A etapa ambiental gera:
+
+- `cta_horaria_from_heat_stress.parquet`;
+- `cta_horaria_from_heat_stress.csv`.
+
+O pipeline integrado gera, por padrão, os seguintes arquivos em `outputs_conforto/`:
 
 - `resultados_janelas.csv`;
 - `best_window.json`;
@@ -222,7 +312,7 @@ O pipeline gera, por padrão, os seguintes arquivos em `outputs_conforto/`:
 - `fig_psychrometric_comfort.pdf`;
 - `fig_comfort_polygon.png`.
 
-## 14. Interpretação científica
+## 16. Interpretação científica
 
 A metodologia é empírica e orientada por dados. Ela não propõe uma zona universal definitiva de conforto térmico para bovinos. Em vez disso, fornece um procedimento reprodutível para identificar, em um conjunto de dados específico, as regiões ambientais associadas a baixa carga térmica acumulada e baixa resposta de ofegação.
 
@@ -234,15 +324,28 @@ polígono = representação geométrica derivada
 zona = região estatística, não limite fisiológico absoluto
 ```
 
-## 15. Comando oficial
+## 17. Comandos oficiais
 
-Para dados horários:
+Para gerar a CTA horária a partir do `heat_stress_report`:
+
+```bash
+python scripts/build_hourly_cta_from_heat_stress.py \
+  --input /caminho/para/heat_stress_report_f1293.csv \
+  --output outputs_conforto/cta_horaria_from_heat_stress.parquet \
+  --output-csv outputs_conforto/cta_horaria_from_heat_stress.csv \
+  --windows 6 9 12 15 18 24 \
+  --threshold 72 \
+  --input-frequency-minutes 5 \
+  --humidity-unit auto
+```
+
+Para dados horários já integrados:
 
 ```bash
 python -m app.run_pipeline --config app/config.yaml
 ```
 
-Para dados ambientais em 5 minutos, com CTA ponderada no tempo:
+Para dados ambientais já integrados em 5 minutos, com CTA ponderada no tempo:
 
 ```bash
 python -m app.run_pipeline \
