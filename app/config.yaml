@@ -34,6 +34,26 @@ thermal_input_preprocessing:
   integer_method: "round"
 
 # ----------------------------------------------------------
+# TEMPORAL RESOLUTION OF THERMAL RECORDS
+# ----------------------------------------------------------
+# This block controls how accumulated heat load is calculated.
+#
+# Default behavior preserves the historical hourly pipeline:
+#   input_frequency_minutes: 60
+#   weighted_by_time: false
+#
+# For environmental records every 5 minutes, use:
+#   input_frequency_minutes: 5
+#   weighted_by_time: true
+#
+# In weighted mode, the pipeline computes:
+#   heat_load = sum(heat_excess * delta_t_hours)
+# where delta_t_hours = input_frequency_minutes / 60.
+thermal_time_resolution:
+  input_frequency_minutes: 60
+  weighted_by_time: false
+
+# ----------------------------------------------------------
 # THERMAL COMFORT EXTRACTION
 # ----------------------------------------------------------
 # Available modes:
@@ -45,17 +65,20 @@ thermal_mode: "auto"
 # heat_excess = max(THI - thi_threshold, 0)
 thi_threshold: 72
 
-# Minimum number of consecutive records required for a comfort
-# period. If records are hourly and regular, 3 means 3 hours.
+# Minimum continuous comfort duration in hours.
+# In hourly data, 3 means 3 records.
+# In 5-minute weighted mode, 3 means 36 consecutive records.
 min_duration: 3
 
 # Directory for intermediate and final generated outputs.
 thermal_output_dir: "outputs_conforto"
 
 # Used when thermal_mode == manual.
+# Window values are expressed in hours.
 thermal_window: 15
 
 # Used when thermal_mode == auto.
+# Window values are expressed in hours.
 # For the current dataset, the exploratory analysis scans all
 # integer windows from 1h to 24h.
 thermal_windows: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
