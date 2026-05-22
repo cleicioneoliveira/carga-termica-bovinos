@@ -15,7 +15,7 @@
 # ----------------------------------------------------------
 # Full path to the unified dataset containing environmental,
 # behavioral and health-status information.
-dataset_path: "/media/extra/wrk/CONFORTO/dataset/processado/monitoramento_saude_unificado.parquet"
+dataset_path: "/media/extra/wrk/CONFORTO/dataset/processado/monitoramento_saude_cta.parquet"
 
 # Optional experimental preprocessing for sensitivity analysis.
 # Keep disabled for the main analysis. Enable only to test whether
