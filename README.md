@@ -120,6 +120,57 @@ python -m app.run_pipeline --config app/config.yaml --verbose-chart
 
 ---
 
+## Enriquecimento do dataset final com CTA
+
+Após executar os aplicativos anteriores do fluxo (`environment_correction`, `status_timeline_reconstructor` e `merge_monitoramento_saude`), o arquivo final pode ser enriquecido com colunas explícitas de ITU operacional, excesso térmico e CTA.
+
+Entrada esperada:
+
+```text
+dataset/processado/monitoramento_saude_unificado.parquet
+```
+
+Comando recomendado:
+
+```bash
+python scripts/enrich_dataset_with_cta.py \
+  --input ../dataset/processado/monitoramento_saude_unificado.parquet \
+  --output ../dataset/processado/monitoramento_saude_cta.parquet \
+  --output-csv ../dataset/processado/monitoramento_saude_cta.csv \
+  --compost 1 \
+  --windows 6 9 12 15 18 24 \
+  --threshold 72 \
+  --max-gap-hours 1
+```
+
+A saída preserva as colunas originais e acrescenta:
+
+```text
+temperatura
+umidade
+itu
+heat_excess
+cta_6h
+cta_9h
+cta_12h
+cta_15h
+cta_18h
+cta_24h
+cta_segment_id
+cta_compost_origem
+cta_threshold_itu
+```
+
+Por padrão, o script usa `thi_compost1` ou `thi_compost2` já produzido pelo fluxo de correção ambiental. Para recalcular o ITU a partir de temperatura e umidade, use:
+
+```bash
+--recompute-itu
+```
+
+Esse arquivo enriquecido é recomendado como entrada rastreável para a etapa de resultados da dissertação.
+
+---
+
 ## Comparação float versus inteiro
 
 Para investigar se a mudança dos dados ambientais de valores inteiros para valores de ponto flutuante alterou a janela ótima de carga térmica, o pipeline possui uma opção experimental de pré-processamento.
