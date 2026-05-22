@@ -79,26 +79,20 @@ def add_heat_load(
     input_frequency_minutes: int = 60,
     weighted_by_time: bool = False,
 ) -> pd.DataFrame:
-    """Calcula carga térmica acumulada em janela móvel por animal.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Dataset with ``heat_excess`` already computed.
-    window : int
-        Accumulation window expressed in hours.
-    input_frequency_minutes : int, optional
-        Time represented by each environmental record. The default, 60,
-        preserves the historical hourly behavior.
-    weighted_by_time : bool, optional
-        When false, the function preserves the original behavior and sums
-        ``heat_excess`` over the last ``window`` records. When true, it treats
-        ``window`` as hours, converts it to records and computes
-        ``sum(heat_excess * delta_t_hours)``. For 5-minute data,
-        ``delta_t_hours = 5 / 60`` and a 15 h window uses 180 records.
-    """
+    """Calcula carga térmica acumulada em janela móvel por animal."""
     enriched = df.copy()
     heat_col = f"heat_load_{window}h"
+    cta_col = f"cta_{window}h"
+
+    if heat_col in enriched.columns:
+        logger.info("Using existing heat-load column: %s.", heat_col)
+        enriched[heat_col] = pd.to_numeric(enriched[heat_col], errors="coerce")
+        return enriched
+
+    if cta_col in enriched.columns:
+        logger.info("Using precomputed CTA column %s as %s.", cta_col, heat_col)
+        enriched[heat_col] = pd.to_numeric(enriched[cta_col], errors="coerce")
+        return enriched
 
     if not weighted_by_time:
         logger.info(
