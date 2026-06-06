@@ -15,6 +15,11 @@ from psychchart.loader import load_chart_config
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_ZONE_DISPLAY_LABELS = {
+    "core": "Núcleo empírico de conforto",
+    "transition": "Faixa empírica de transição",
+    "limit": "Envoltória empírica limite",
+}
 
 
 def _resolve_chart_config_path(cfg: dict[str, Any]) -> Path:
@@ -222,6 +227,14 @@ def _convert_polygon_humidity_if_requested(
     return out
 
 
+def _get_zone_display_label(zone_name: str, cfg: dict[str, Any]) -> str:
+    """Return the publication-friendly display label for a zone."""
+    zone_labels_cfg = cfg.get("zone_display_labels", {})
+    if isinstance(zone_labels_cfg, dict) and zone_name in zone_labels_cfg:
+        return str(zone_labels_cfg[zone_name])
+    return DEFAULT_ZONE_DISPLAY_LABELS.get(zone_name, str(zone_name))
+
+
 def _draw_zone_polygons(
     ax,
     polygons: dict[str, Any],
@@ -240,6 +253,7 @@ def _draw_zone_polygons(
         pts = _convert_polygon_humidity_if_requested(pts, cfg)
 
         color = colors.get(zone_name, "0.7")
+        display_label = _get_zone_display_label(str(zone_name), cfg)
 
         patch = MplPolygon(
             pts,
@@ -258,7 +272,7 @@ def _draw_zone_polygons(
                 edgecolor=zone_edgecolor,
                 linewidth=zone_linewidth,
                 alpha=zone_alpha,
-                label=str(zone_name),
+                label=display_label,
             )
         )
 
@@ -267,7 +281,7 @@ def _draw_zone_polygons(
             ax.text(
                 centroid[0],
                 centroid[1],
-                str(zone_name),
+                display_label,
                 ha="center",
                 va="center",
                 fontsize=cfg.get("zone_label_fontsize", 6),
@@ -280,26 +294,43 @@ def _draw_zone_polygons(
 
 
 def _add_legend(ax, handles: list[Patch], cfg: dict[str, Any]) -> None:
-    """Add legend for comfort-zone polygons."""
+    """Add a cleaner publication-style legend for comfort zones."""
     if not handles or not cfg.get("legend", True):
         return
 
     legend = ax.legend(
         handles=handles,
-        loc=cfg.get("legend_loc", "upper left"),
+        loc=cfg.get("legend_loc", "upper right"),
         bbox_to_anchor=cfg.get("legend_bbox_to_anchor", None),
-        frameon=True,
-        framealpha=0.92,
-        fontsize=cfg.get("legend_fontsize", 6),
-        title=cfg.get("legend_title", "Zonas"),
-        title_fontsize=cfg.get("legend_title_fontsize", 6),
-        borderpad=0.5,
-        labelspacing=0.35,
-        handlelength=1.2,
-        handletextpad=0.5,
+        frameon=cfg.get("legend_frameon", False),
+        framealpha=1.0,
+        fancybox=False,
+        shadow=False,
+        fontsize=cfg.get("legend_fontsize", 6.5),
+        title=cfg.get("legend_title", None),
+        title_fontsize=cfg.get("legend_title_fontsize", 6.5),
+        borderpad=cfg.get("legend_borderpad", 0.3),
+        labelspacing=cfg.get("legend_labelspacing", 0.35),
+        handlelength=cfg.get("legend_handlelength", 1.1),
+        handleheight=cfg.get("legend_handleheight", 0.8),
+        handletextpad=cfg.get("legend_handletextpad", 0.4),
+        borderaxespad=cfg.get("legend_borderaxespad", 0.3),
+        columnspacing=cfg.get("legend_columnspacing", 0.7),
+        ncol=cfg.get("legend_ncol", 1),
     )
-    legend.get_frame().set_linewidth(0.4)
-    legend.get_frame().set_edgecolor("0.4")
+
+    if legend.get_title() is not None:
+        legend.get_title().set_fontweight("normal")
+        legend.get_title().set_color("black")
+
+    for text in legend.get_texts():
+        text.set_color("black")
+
+    frame = legend.get_frame()
+    frame.set_facecolor("white")
+    frame.set_alpha(cfg.get("legend_framealpha", 1.0))
+    frame.set_edgecolor(cfg.get("legend_edgecolor", "none"))
+    frame.set_linewidth(cfg.get("legend_linewidth", 0.0))
 
 
 def _resolve_output_path(cfg: dict[str, Any]) -> Path | None:
