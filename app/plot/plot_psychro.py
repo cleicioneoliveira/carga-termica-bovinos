@@ -14,6 +14,7 @@ not pass a top-level ``chart`` key directly to ``PsychChart``.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -85,28 +86,20 @@ def _resolve_chart_config_path(cfg: dict[str, Any]) -> Path:
     )
 
 
-
 def _clear_existing_titles(fig, ax) -> None:
-    """
-    Remove titles created previously by PsychChart or matplotlib.
-
-    PsychChart may set the axis title internally from cfg.title. This function
-    clears all title locations before the pipeline applies its final title.
-    """
+    """Remove titles created previously by PsychChart or matplotlib."""
     ax.set_title("", loc="left")
     ax.set_title("", loc="center")
     ax.set_title("", loc="right")
+    ax.title.set_text("")
 
     if getattr(fig, "_suptitle", None) is not None:
         fig._suptitle.remove()
         fig._suptitle = None
 
 
-
 def _line_is_axis_aligned(line) -> bool:
-    """
-    Return True for vertical or horizontal helper/grid-like lines.
-    """
+    """Return True for vertical or horizontal helper/grid-like lines."""
     try:
         xdata = np.asarray(line.get_xdata(), dtype=float)
         ydata = np.asarray(line.get_ydata(), dtype=float)
@@ -118,15 +111,56 @@ def _line_is_axis_aligned(line) -> bool:
 
     is_vertical = np.nanmax(xdata) - np.nanmin(xdata) < 1.0e-9
     is_horizontal = np.nanmax(ydata) - np.nanmin(ydata) < 1.0e-9
-
     return bool(is_vertical or is_horizontal)
 
 
+def _restyle_psychchart_lines(ax, cfg: dict[str, Any]) -> None:
+    """
+    Rebalance line weights from psychchart after chart.draw().
+
+    The psychchart background includes structural lines that are not regular
+    matplotlib gridlines, so they must be toned down explicitly.
+    """
+    saturation_lw = cfg.get("saturation_linewidth", 0.70)
+    major_lw = cfg.get("major_psychro_linewidth", 0.28)
+    minor_lw = cfg.get("minor_psychro_linewidth", 0.22)
+
+    for line in ax.lines:
+        try:
+            x = np.asarray(line.get_xdata(), dtype=float)
+            y = np.asarray(line.get_ydata(), dtype=float)
+        except Exception:
+            continue
+
+        if x.size < 2 or y.size < 2:
+            continue
+
+        dx = np.nanmax(x) - np.nanmin(x)
+        dy = np.nanmax(y) - np.nanmin(y)
+        is_vertical = dx < 1e-9
+        is_horizontal = dy < 1e-9
+
+        if is_vertical or is_horizontal:
+            line.set_color("0.68")
+            line.set_linewidth(major_lw)
+            line.set_alpha(0.38)
+            line.set_linestyle("-")
+            continue
+
+        # Keep the saturation curve visible, but lighter than before.
+        if line.get_linewidth() >= 1.0:
+            line.set_color("0.20")
+            line.set_linewidth(saturation_lw)
+            line.set_alpha(0.88)
+            continue
+
+        line.set_color("0.72")
+        line.set_linewidth(minor_lw)
+        line.set_alpha(0.45)
+
 
 def _apply_nature_style_to_psychchart(ax, cfg: dict[str, Any]) -> None:
-    """
-    Apply a cleaner academic/Nature-like visual style to the psychrometric chart.
-    """
+    """Apply a cleaner academic/Nature-like visual style to the chart."""
     fig = ax.figure
 
     fig.set_facecolor("white")
@@ -134,7 +168,7 @@ def _apply_nature_style_to_psychchart(ax, cfg: dict[str, Any]) -> None:
 
     _clear_existing_titles(fig, ax)
 
-    title = cfg.get("title", "Carta psicrométrica com zonas empíricas de conforto")
+    title = cfg.get("title", "Carta psicrometrica com zonas empiricas de conforto")
     if title:
         ax.set_title(
             title,
@@ -151,7 +185,7 @@ def _apply_nature_style_to_psychchart(ax, cfg: dict[str, Any]) -> None:
         color="black",
     )
     ax.set_ylabel(
-        cfg.get("ylabel", "Razão de umidade, W (g kg⁻¹ de ar seco)"),
+        cfg.get("ylabel", "Razao de umidade, W (g kg-1 de ar seco)"),
         fontsize=7,
         color="black",
     )
@@ -178,32 +212,14 @@ def _apply_nature_style_to_psychchart(ax, cfg: dict[str, Any]) -> None:
         spine.set_linewidth(0.6)
         spine.set_color("black")
 
-    for line in ax.lines:
-        if _line_is_axis_aligned(line):
-            line.set_color("0.82")
-            line.set_linewidth(cfg.get("helper_linewidth", 0.22))
-            line.set_alpha(0.45)
-            line.set_linestyle("-")
-            continue
-
-        line.set_linewidth(cfg.get("psychrometric_linewidth", 0.35))
-        line.set_alpha(cfg.get("psychrometric_line_alpha", 0.55))
+    # Disable the regular matplotlib grid. The psychchart background already
+    # contains the structural lines we want, and we restyle them separately.
+    ax.grid(False)
 
     for text in ax.texts:
-        text.set_fontsize(cfg.get("psychrometric_label_fontsize", 5.5))
-        text.set_alpha(cfg.get("psychrometric_label_alpha", 0.75))
-        text.set_color(cfg.get("psychrometric_label_color", "0.25"))
-
-    if cfg.get("grid", True):
-        ax.grid(
-            True,
-            which="major",
-            linewidth=cfg.get("grid_linewidth", 0.25),
-            alpha=cfg.get("grid_alpha", 0.25),
-        )
-    else:
-        ax.grid(False)
-
+        text.set_fontsize(cfg.get("psychrometric_label_fontsize", 5.3))
+        text.set_alpha(cfg.get("psychrometric_label_alpha", 0.72))
+        text.set_color(cfg.get("psychrometric_label_color", "0.35"))
 
 
 def _to_points_array(points: Any) -> np.ndarray:
@@ -226,11 +242,8 @@ def _to_points_array(points: Any) -> np.ndarray:
     return arr
 
 
-
 def _convert_w_to_gkg_if_needed(points: np.ndarray, cfg: dict[str, Any]) -> np.ndarray:
-    """
-    Convert moisture coordinate from kg/kg to g/kg when needed.
-    """
+    """Convert moisture coordinate from kg/kg to g/kg when needed."""
     moisture_unit = str(cfg.get("moisture_unit", cfg.get("w_unit", "g/kg"))).lower()
 
     out = points.copy()
@@ -245,16 +258,13 @@ def _convert_w_to_gkg_if_needed(points: np.ndarray, cfg: dict[str, Any]) -> np.n
     return out
 
 
-
 def _draw_zone_polygons(
     ax,
     polygons: dict[str, Any],
     colors: dict[str, str],
     cfg: dict[str, Any],
 ) -> list[Patch]:
-    """
-    Draw empirical comfort-zone polygons and return legend handles.
-    """
+    """Draw empirical comfort-zone polygons and return legend handles."""
     handles: list[Patch] = []
 
     zone_alpha = cfg.get("zone_alpha", 0.38)
@@ -288,7 +298,7 @@ def _draw_zone_polygons(
             )
         )
 
-        if cfg.get("zone_labels", True):
+        if cfg.get("zone_labels", False):
             centroid = np.nanmean(pts, axis=0)
             ax.text(
                 centroid[0],
@@ -305,11 +315,8 @@ def _draw_zone_polygons(
     return handles
 
 
-
 def _add_legend(ax, handles: list[Patch], cfg: dict[str, Any]) -> None:
-    """
-    Add legend for comfort-zone polygons.
-    """
+    """Add legend for comfort-zone polygons."""
     if not handles or not cfg.get("legend", True):
         return
 
@@ -332,11 +339,8 @@ def _add_legend(ax, handles: list[Patch], cfg: dict[str, Any]) -> None:
     legend.get_frame().set_edgecolor("0.4")
 
 
-
 def _resolve_output_path(cfg: dict[str, Any]) -> Path | None:
-    """
-    Resolve the final figure path from the runtime configuration.
-    """
+    """Resolve the final figure path from the runtime configuration."""
     output = cfg.get("output") or cfg.get("output_file")
     if output:
         output_path = Path(output).expanduser()
@@ -355,35 +359,61 @@ def _resolve_output_path(cfg: dict[str, Any]) -> Path | None:
     return None
 
 
+def _get_export_formats(cfg: dict[str, Any]) -> list[str]:
+    """
+    Return the list of file formats to export.
+
+    Default behavior is conservative to avoid excessive memory use during
+    batch execution. PNG is always exported unless explicitly overridden.
+    """
+    formats = cfg.get("save_formats")
+    if formats is None:
+        formats = ["png"]
+
+    if isinstance(formats, str):
+        formats = [formats]
+
+    normalized: list[str] = []
+    for fmt in formats:
+        fmt_str = str(fmt).strip().lower().lstrip(".")
+        if fmt_str and fmt_str not in normalized:
+            normalized.append(fmt_str)
+
+    return normalized or ["png"]
+
+
+def _safe_tight_layout(fig) -> None:
+    """Apply tight layout without spamming warnings in constrained cases."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Tight layout not applied.*",
+            category=UserWarning,
+        )
+        fig.tight_layout(pad=0.6)
+
 
 def _save_or_show(fig, cfg: dict[str, Any]) -> None:
-    """
-    Save the figure to disk or show it interactively.
-    """
+    """Save the figure to disk or show it interactively."""
     output_path = _resolve_output_path(cfg)
 
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         stem = output_path.with_suffix("")
-        dpi = cfg.get("dpi", cfg.get("save_dpi", 600))
+        dpi = cfg.get("dpi", cfg.get("save_dpi", 300))
         transparent = cfg.get("transparent", False)
+        formats = _get_export_formats(cfg)
 
-        fig.savefig(
-            stem.with_suffix(".png"),
-            dpi=dpi,
-            bbox_inches="tight",
-            transparent=transparent,
-        )
-        fig.savefig(
-            stem.with_suffix(".pdf"),
-            bbox_inches="tight",
-            transparent=transparent,
-        )
-        fig.savefig(
-            stem.with_suffix(".svg"),
-            bbox_inches="tight",
-            transparent=transparent,
-        )
+        for fmt in formats:
+            save_kwargs: dict[str, Any] = {
+                "bbox_inches": "tight",
+                "transparent": transparent,
+            }
+            if fmt in {"png", "jpg", "jpeg", "tif", "tiff", "webp"}:
+                save_kwargs["dpi"] = dpi
+
+            fig.savefig(stem.with_suffix(f".{fmt}"), **save_kwargs)
+
         plt.close(fig)
         return
 
@@ -391,7 +421,6 @@ def _save_or_show(fig, cfg: dict[str, Any]) -> None:
         plt.show()
     else:
         plt.close(fig)
-
 
 
 def plot_psychro(
@@ -427,7 +456,7 @@ def plot_psychro(
         chart.cfg.title = None
 
     rc_params = {
-        "font.family": cfg.get("font_family", "Arial"),
+        "font.family": cfg.get("font_family", "DejaVu Sans"),
         "font.size": 6,
         "axes.labelsize": 7,
         "axes.titlesize": 8,
@@ -458,9 +487,10 @@ def plot_psychro(
         fig.set_size_inches(width, height)
 
         _apply_nature_style_to_psychchart(ax, cfg)
+        _restyle_psychchart_lines(ax, cfg)
 
         handles = _draw_zone_polygons(ax, polygons, colors, cfg)
         _add_legend(ax, handles, cfg)
 
-        fig.tight_layout()
+        _safe_tight_layout(fig)
         _save_or_show(fig, cfg)
