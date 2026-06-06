@@ -2,7 +2,7 @@
 # Chart configuration
 # ------------------------------------------------------------
 chart:
-  title: "Cattle Functional Comfort Analysis"
+  title: ""
   t_min: 0
   t_max: 40
   y_min: 0.0
@@ -15,21 +15,23 @@ chart:
 isolines:
   relative_humidity:
     enabled: True
-    color: "blue"
+    color: "0.70"
     labels: True
+    linewidth: 0.35
   enthalpy:
     enabled: True
-    color: "red"
+    color: "0.75"
     labels: True
-      
+    linewidth: 0.25
+
 indexes:
   - index: ITU
     label: ITU
     render:
       isolines:
         levels: [62, 68, 72, 78, 84, 90]
-        color: black
-        linewidth: 1.2
+        color: "0.35"
+        linewidth: 0.45
         style: ":"
         label: true
 
@@ -60,5 +62,3 @@ indexes:
 #        cmap: viridis
 #        alpha: 0.6
 #        colorbar: true
-
-
