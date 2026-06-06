@@ -1,16 +1,4 @@
-"""
-Psychrometric plotting utilities for the thermal load pipeline.
-
-This module uses the external ``psychchart`` package only to draw the
-psychrometric background. The empirical thermal-comfort zones are then drawn
-on top of the chart using matplotlib patches.
-
-Important
----------
-``psychchart.load_chart_config()`` already returns a dictionary compatible with
-``PsychChart(**chart_cfg)``. Do not unwrap the original YAML manually and do
-not pass a top-level ``chart`` key directly to ``PsychChart``.
-"""
+"""Psychrometric plotting utilities for the thermal load pipeline."""
 
 from __future__ import annotations
 
@@ -30,18 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _resolve_chart_config_path(cfg: dict[str, Any]) -> Path:
-    """
-    Resolve the psychchart YAML configuration file.
-
-    Priority
-    --------
-    1. cfg["chart_config_path"]
-    2. cfg["psychchart_config"]
-    3. cfg["chart_config"]
-    4. cfg["chart"]["config"]
-    5. app/chart_config.yaml relative to the repository root
-    6. app/plot/chart_config.yaml relative to this file
-    """
+    """Resolve the psychchart YAML configuration file."""
     candidates: list[Path] = []
 
     for key in ("chart_config_path", "psychchart_config", "chart_config"):
@@ -115,12 +92,7 @@ def _line_is_axis_aligned(line) -> bool:
 
 
 def _restyle_psychchart_lines(ax, cfg: dict[str, Any]) -> None:
-    """
-    Rebalance line weights from psychchart after chart.draw().
-
-    The psychchart background includes structural lines that are not regular
-    matplotlib gridlines, so they must be toned down explicitly.
-    """
+    """Tone down structural lines drawn by PsychChart."""
     saturation_lw = cfg.get("saturation_linewidth", 0.70)
     major_lw = cfg.get("major_psychro_linewidth", 0.28)
     minor_lw = cfg.get("minor_psychro_linewidth", 0.22)
@@ -147,7 +119,6 @@ def _restyle_psychchart_lines(ax, cfg: dict[str, Any]) -> None:
             line.set_linestyle("-")
             continue
 
-        # Keep the saturation curve visible, but lighter than before.
         if line.get_linewidth() >= 1.0:
             line.set_color("0.20")
             line.set_linewidth(saturation_lw)
@@ -160,7 +131,7 @@ def _restyle_psychchart_lines(ax, cfg: dict[str, Any]) -> None:
 
 
 def _apply_nature_style_to_psychchart(ax, cfg: dict[str, Any]) -> None:
-    """Apply a cleaner academic/Nature-like visual style to the chart."""
+    """Apply a cleaner academic visual style to the chart."""
     fig = ax.figure
 
     fig.set_facecolor("white")
@@ -185,7 +156,7 @@ def _apply_nature_style_to_psychchart(ax, cfg: dict[str, Any]) -> None:
         color="black",
     )
     ax.set_ylabel(
-        cfg.get("ylabel", "Razao de umidade, W (g kg-1 de ar seco)"),
+        cfg.get("ylabel", "Razao de mistura (kg kg-1)"),
         fontsize=7,
         color="black",
     )
@@ -212,8 +183,6 @@ def _apply_nature_style_to_psychchart(ax, cfg: dict[str, Any]) -> None:
         spine.set_linewidth(0.6)
         spine.set_color("black")
 
-    # Disable the regular matplotlib grid. The psychchart background already
-    # contains the structural lines we want, and we restyle them separately.
     ax.grid(False)
 
     for text in ax.texts:
@@ -223,37 +192,32 @@ def _apply_nature_style_to_psychchart(ax, cfg: dict[str, Any]) -> None:
 
 
 def _to_points_array(points: Any) -> np.ndarray:
-    """
-    Convert polygon points to a numeric Nx2 numpy array.
-
-    Accepted formats
-    ----------------
-    - [[T, W], [T, W], ...]
-    - [(T, W), (T, W), ...]
-    - numpy array with shape (N, 2)
-    """
+    """Convert polygon points to a numeric Nx2 numpy array."""
     arr = np.asarray(points, dtype=float)
-
     if arr.ndim != 2 or arr.shape[1] != 2:
-        raise ValueError(
-            "Each polygon must be an array-like object with shape (N, 2)."
-        )
-
+        raise ValueError("Each polygon must be an array-like object with shape (N, 2).")
     return arr
 
 
-def _convert_w_to_gkg_if_needed(points: np.ndarray, cfg: dict[str, Any]) -> np.ndarray:
-    """Convert moisture coordinate from kg/kg to g/kg when needed."""
-    moisture_unit = str(cfg.get("moisture_unit", cfg.get("w_unit", "g/kg"))).lower()
+def _convert_polygon_humidity_if_requested(
+    points: np.ndarray,
+    cfg: dict[str, Any],
+) -> np.ndarray:
+    """
+    Convert polygon humidity coordinates only when explicitly requested.
 
+    The PsychChart in this repository uses the humidity axis in kg/kg
+    (for example y_max = 0.030 in app/chart_config.yaml). The empirical
+    polygons are generated in the same unit. Automatic conversion to g/kg was
+    pushing polygons outside the visible domain and making them disappear.
+    """
+    convert_mode = str(cfg.get("polygon_humidity_conversion", "none")).lower()
     out = points.copy()
 
-    if moisture_unit in {"kg/kg", "kg kg-1", "kg kg⁻¹"}:
+    if convert_mode in {"kgkg_to_gkg", "kg/kg_to_g/kg", "to_gkg"}:
         out[:, 1] *= 1000.0
-        return out
-
-    if np.nanmax(np.abs(out[:, 1])) < 0.2:
-        out[:, 1] *= 1000.0
+    elif convert_mode in {"gkg_to_kgkg", "g/kg_to_kg/kg", "to_kgkg"}:
+        out[:, 1] /= 1000.0
 
     return out
 
@@ -273,7 +237,7 @@ def _draw_zone_polygons(
 
     for zone_name, points in polygons.items():
         pts = _to_points_array(points)
-        pts = _convert_w_to_gkg_if_needed(pts, cfg)
+        pts = _convert_polygon_humidity_if_requested(pts, cfg)
 
         color = colors.get(zone_name, "0.7")
 
@@ -334,7 +298,6 @@ def _add_legend(ax, handles: list[Patch], cfg: dict[str, Any]) -> None:
         handlelength=1.2,
         handletextpad=0.5,
     )
-
     legend.get_frame().set_linewidth(0.4)
     legend.get_frame().set_edgecolor("0.4")
 
@@ -360,16 +323,10 @@ def _resolve_output_path(cfg: dict[str, Any]) -> Path | None:
 
 
 def _get_export_formats(cfg: dict[str, Any]) -> list[str]:
-    """
-    Return the list of file formats to export.
-
-    Default behavior is conservative to avoid excessive memory use during
-    batch execution. PNG is always exported unless explicitly overridden.
-    """
+    """Return the list of file formats to export."""
     formats = cfg.get("save_formats")
     if formats is None:
         formats = ["png"]
-
     if isinstance(formats, str):
         formats = [formats]
 
@@ -378,7 +335,6 @@ def _get_export_formats(cfg: dict[str, Any]) -> list[str]:
         fmt_str = str(fmt).strip().lower().lstrip(".")
         if fmt_str and fmt_str not in normalized:
             normalized.append(fmt_str)
-
     return normalized or ["png"]
 
 
@@ -396,7 +352,6 @@ def _safe_tight_layout(fig) -> None:
 def _save_or_show(fig, cfg: dict[str, Any]) -> None:
     """Save the figure to disk or show it interactively."""
     output_path = _resolve_output_path(cfg)
-
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         stem = output_path.with_suffix("")
@@ -411,7 +366,6 @@ def _save_or_show(fig, cfg: dict[str, Any]) -> None:
             }
             if fmt in {"png", "jpg", "jpeg", "tif", "tiff", "webp"}:
                 save_kwargs["dpi"] = dpi
-
             fig.savefig(stem.with_suffix(f".{fmt}"), **save_kwargs)
 
         plt.close(fig)
@@ -431,27 +385,11 @@ def plot_psychro(
     colors: dict,
     cfg: dict,
 ):
-    """
-    Plot psychrometric chart with empirical comfort zones.
-
-    Parameters
-    ----------
-    T_edges, W_edges, values
-        Kept in the signature for compatibility with the pipeline.
-        The current version uses PsychChart for the background and overlays
-        the empirical polygons.
-    polygons
-        Dictionary mapping zone names to polygon coordinates.
-    colors
-        Dictionary mapping zone names to matplotlib-compatible colors.
-    cfg
-        Runtime plotting configuration.
-    """
+    """Plot psychrometric chart with empirical comfort zones."""
     chart_config_path = _resolve_chart_config_path(cfg)
     chart_cfg = load_chart_config(str(chart_config_path))
 
     chart = PsychChart(**chart_cfg)
-
     if hasattr(chart, "cfg"):
         chart.cfg.title = None
 
@@ -478,7 +416,6 @@ def plot_psychro(
 
         fig = chart.fig
         ax = chart.ax
-
         if fig is None or ax is None:
             raise RuntimeError("PsychChart did not create a valid figure/axis.")
 
