@@ -111,6 +111,59 @@ chart_config_path: "app/chart_config.yaml"
 # Final figure filename. It is saved inside thermal_output_dir.
 output_fig: "fig_comfort_polygon.png"
 
+# Export only PNG by default to keep memory usage low in batch runs.
+save_formats: ["png"]
+
+# Default export resolution for raster outputs.
+dpi: 300
+
+# Font chosen to avoid missing glyph warnings in headless/HPC environments.
+font_family: "DejaVu Sans"
+
+# Publication-oriented title and axis labels.
+title: "Carta psicrométrica com zonas empíricas de conforto"
+xlabel: "Temperatura do ar, Tbs (°C)"
+ylabel: "Razão de mistura (kg kg-1)"
+
+# Keep humidity units consistent with app/chart_config.yaml.
+polygon_humidity_conversion: "none"
+
+# Do not repeat zone names inside polygons by default.
+zone_labels: false
+
+# Human-readable labels used in the legend and, if enabled, inside zones.
+zone_display_labels:
+  core: "Núcleo empírico de conforto"
+  transition: "Faixa empírica de transição"
+  limit: "Envoltória empírica limite"
+
+# Cleaner legend settings, slightly larger but still article-like.
+legend: true
+legend_loc: "upper right"
+legend_frameon: false
+legend_title: null
+legend_fontsize: 6.5
+legend_title_fontsize: 6.5
+legend_borderpad: 0.3
+legend_labelspacing: 0.35
+legend_handlelength: 1.1
+legend_handleheight: 0.8
+legend_handletextpad: 0.4
+legend_borderaxespad: 0.3
+legend_columnspacing: 0.7
+legend_ncol: 1
+
+# Styling parameters for the psychrometric background and polygons.
+major_psychro_linewidth: 0.28
+minor_psychro_linewidth: 0.22
+saturation_linewidth: 0.70
+psychrometric_label_fontsize: 5.3
+psychrometric_label_alpha: 0.72
+psychrometric_label_color: "0.35"
+zone_alpha: 0.38
+zone_edgecolor: "0.15"
+zone_linewidth: 0.45
+
 # ----------------------------------------------------------
 # DENSITY FIELD PARAMETERS
 # ----------------------------------------------------------
