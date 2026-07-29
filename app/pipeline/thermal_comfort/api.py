@@ -80,6 +80,7 @@ def run_manual_mode(
     df_periods = extract_comfort_periods(
         df_comfort,
         min_duration=min_duration_records,
+        expected_interval_minutes=input_frequency_minutes,
     )
 
     plot_psychrometric(df_periods, output_path, show_plot=show_plots)
@@ -135,6 +136,7 @@ def run_auto_mode(
     df_periods = extract_comfort_periods(
         df_comfort,
         min_duration=min_duration_records,
+        expected_interval_minutes=input_frequency_minutes,
     )
 
     plot_psychrometric(df_periods, output_path, show_plot=show_plots)
