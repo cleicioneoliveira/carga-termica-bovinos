@@ -46,17 +46,36 @@ def define_comfort(df: pd.DataFrame, window: int) -> pd.DataFrame:
 def extract_comfort_periods(
     df: pd.DataFrame,
     min_duration: int = DEFAULT_MIN_DURATION,
+    expected_interval_minutes: int = 60,
 ) -> pd.DataFrame:
     """
-    Extrai blocos contínuos de conforto por animal.
-    """
-    ordered = df.sort_values([Column.ANIMAL_ID, Column.DATA_HORA]).copy()
+    Extrai blocos temporalmente contínuos de conforto por animal.
 
-    change = (
-        ordered.groupby(Column.ANIMAL_ID, observed=False)[Column.COMFORT_FLAG]
-        .transform(lambda series: series.ne(series.shift()).fillna(True))
-        .astype(int)
+    Um novo bloco é iniciado quando a classificação de conforto muda ou quando
+    o intervalo entre dois registros sucessivos difere da resolução temporal
+    esperada. ``min_duration`` é expresso em número de registros; a API converte
+    previamente horas em registros quando a entrada possui resolução sub-horária.
+    """
+    if expected_interval_minutes <= 0:
+        raise ValueError("expected_interval_minutes deve ser maior que zero.")
+
+    ordered = df.sort_values([Column.ANIMAL_ID, Column.DATA_HORA]).copy()
+    ordered[Column.DATA_HORA] = pd.to_datetime(
+        ordered[Column.DATA_HORA], errors="coerce"
     )
+
+    comfort_change = ordered.groupby(
+        Column.ANIMAL_ID, observed=False
+    )[Column.COMFORT_FLAG].transform(
+        lambda series: series.ne(series.shift()).fillna(True)
+    )
+
+    expected_delta = pd.Timedelta(minutes=expected_interval_minutes)
+    temporal_break = ordered.groupby(
+        Column.ANIMAL_ID, observed=False
+    )[Column.DATA_HORA].diff().ne(expected_delta)
+
+    change = (comfort_change | temporal_break).astype(int)
 
     ordered[Column.BLOCK] = change.groupby(
         ordered[Column.ANIMAL_ID], observed=False
@@ -66,15 +85,18 @@ def extract_comfort_periods(
         ordered.groupby([Column.ANIMAL_ID, Column.BLOCK], observed=False)
         .agg(
             comfort_flag_first=(Column.COMFORT_FLAG, "first"),
-            block_duration_h=(Column.COMFORT_FLAG, "size"),
+            block_duration_records=(Column.COMFORT_FLAG, "size"),
         )
         .reset_index()
+    )
+    block_info[Column.BLOCK_DURATION_H] = (
+        block_info["block_duration_records"] * expected_interval_minutes / 60.0
     )
 
     valid_blocks = block_info[
         block_info["comfort_flag_first"].fillna(False)
-        & (block_info["block_duration_h"] >= min_duration)
-    ][[Column.ANIMAL_ID, Column.BLOCK, "block_duration_h"]]
+        & (block_info["block_duration_records"] >= min_duration)
+    ][[Column.ANIMAL_ID, Column.BLOCK, Column.BLOCK_DURATION_H]]
 
     if valid_blocks.empty:
         return pd.DataFrame(columns=list(ordered.columns) + [Column.BLOCK_DURATION_H])
