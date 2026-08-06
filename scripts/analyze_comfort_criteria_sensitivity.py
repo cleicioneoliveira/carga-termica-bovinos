@@ -118,7 +118,7 @@ def assign_continuous_blocks(
 ) -> pd.DataFrame:
     """Split blocks on comfort changes or temporal discontinuities."""
     result = flagged.copy()
-    expected_delta = pd.Timedelta(minutes=expected_interval_minutes)
+    expected_delta = pd.Timedelta(int(expected_interval_minutes), unit="min")
 
     flag_change = result.groupby(animal_col, observed=False)["comfort_flag"].transform(
         lambda values: values.ne(values.shift()).fillna(True)
@@ -269,8 +269,14 @@ def main() -> int:
     ordered[time_col] = pd.to_datetime(ordered[time_col], errors="coerce")
     for column in [panting_col, temperature_col, humidity_col, cta_col]:
         ordered[column] = pd.to_numeric(ordered[column], errors="coerce")
-    ordered = ordered.dropna(subset=[animal_col, time_col]).sort_values(
+    before_cleaning = len(ordered)
+    ordered = ordered.dropna(subset=required).sort_values(
         [animal_col, time_col]
+    ).reset_index(drop=True)
+
+    LOGGER.info(
+        "Removed %s rows with incomplete required data.",
+        f"{before_cleaning - len(ordered):,}",
     )
     ordered = ordered.rename(columns={time_col: "data_hora_normalized"})
     ordered["humidity_ratio_kg_kg"] = humidity_ratio(
